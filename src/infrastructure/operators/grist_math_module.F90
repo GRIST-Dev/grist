@@ -17,19 +17,39 @@
    implicit none
 
     interface norm 
+#ifdef SPCODE
+        module procedure norm_r4
+#else
         module procedure norm_r4, norm_r8
+#endif
     end interface norm 
     interface cross_product 
+#ifdef SPCODE
+        module procedure cross_product_r4
+#else
         module procedure cross_product_r4, cross_product_r8
+#endif
     end interface cross_product 
     interface arcdistll
+#ifdef SPCODE
+        module procedure arcdistll_r4
+#else
         module procedure arcdistll_r4, arcdistll_r8
+#endif
     end interface arcdistll
     interface convert_vector_sph2cart
+#ifdef SPCODE
+        module procedure convert_vector_sph2cart_r4
+#else
         module procedure convert_vector_sph2cart_r4, convert_vector_sph2cart_r8
+#endif
     end interface convert_vector_sph2cart
     interface convert_vector_cart2sph
+#ifdef SPCODE
+        module procedure convert_vector_cart2sph_r4
+#else
         module procedure convert_vector_cart2sph_r4, convert_vector_cart2sph_r8
+#endif
     end interface convert_vector_cart2sph
 
    public
@@ -538,7 +558,7 @@ subroutine lininterp (arrin, yin, ncell, nlevin, arrout, &
        print *, "vector:",vector(1:3)
        print *, "point:" ,rvec(1:3)
        print *, "dot product:", test
-       stop
+      !  stop
     end if
 
     vector_u_component   = dot_product(vector,eaz)

@@ -9,6 +9,7 @@
  module grist_data_types
 
   use grist_constants,     only: i4, r8, zero
+  use grist_constants,     only: r4 => ns
   use grist_element_types_icosh, only: vector
 
   implicit none
@@ -68,16 +69,19 @@
 
   type scalar_1d_field
      real(r8), allocatable      :: f(:)     ! field values array, ordered in the same sequence as index
+     real(r4), allocatable      :: f_r4(:)
      integer(i4)                :: pos = -1 ! 0: v location; 1: t location; 6: e location
   end type scalar_1d_field
 
   type scalar_2d_field
      real(r8), allocatable      :: f(:,:)   ! field values array, ordered in the same sequence as index
+     real(r4), allocatable      :: f_r4(:,:)
      integer(i4)                :: pos = -1 ! Position of the values relative to a mesh
   end type scalar_2d_field
 
   type scalar_3d_field
      real(r8), allocatable      :: f(:,:,:) ! field values array, ordered in the same sequence as index
+     real(r4), allocatable      :: f_r4(:,:,:)
      integer(i4)                :: pos = -1 ! Position of the values relative to a mesh
   end type scalar_3d_field
 

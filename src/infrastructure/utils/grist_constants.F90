@@ -23,13 +23,31 @@ module grist_constants
 #else
   integer, parameter   :: r8      = selected_real_kind(12,100)
 #endif
+#ifdef MIXCODE
+
+#ifdef MIXCHECK
+  integer, parameter   :: ns      = r8
+#else
+  integer, parameter   :: ns      = r4
+#endif
+
+#elif SPCODE
+  integer, parameter   :: ns      = r4
+#else
+  integer, parameter   :: ns      = r8
+#endif
   integer,  parameter  :: r16     = max(r8,selected_real_kind(27,2400))
 
   real(r8), parameter  :: zero    = 0._r8
+  real(ns), parameter  :: zero_ns = 0._ns
   real(r8), parameter  :: half    = 0.5_r8
+  real(ns), parameter  :: half_ns = 0.5_ns
   real(r8), parameter  :: one     = 1._r8
+  real(ns), parameter  :: one_ns  = 1._ns
   real(r8), parameter  :: two     = 2._r8
+  real(ns), parameter  :: two_ns  = 2._ns
   real(r8), parameter  :: pi      = 3.14159265358979323846_r8
+  real(ns), parameter  :: pi_ns   = pi
   real(r8), parameter  :: pi2     = 2._r8*pi
   real(r8), parameter  :: pio2    = pi/2._r8
   real(r8), parameter  :: piby2   = pi*0.5_r8
@@ -52,16 +70,19 @@ module grist_constants
 #else
   real(r8), parameter  :: rearth  = 6.37122e6_r8
 #endif
+  real(ns), parameter  :: rearth_ns = rearth
   real(r8), parameter  :: eradi   = 1._r8/6.37122e6_r8
   real(r8), parameter  :: gravity = 9.80616_r8
   real(r8), parameter  :: gravi   = 1._r8/9.80616_r8
 
+  real(ns), parameter  :: gravity_ns = gravity
 ! Angular velocity of the Earth (rot/s)
 #ifdef NONROT
   real(r8), parameter  :: omega   = 0._r8
 #else
   real(r8), parameter  :: omega   = 7.2921e-5_r8
 #endif
+  real(ns), parameter  :: omega_ns = omega
   real(r8), parameter  :: day2sec  = 86400_r8
   real(r8), parameter  :: sec2day  = 1._r8/86400_r8
 #ifndef OLDSIX

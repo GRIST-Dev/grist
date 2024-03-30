@@ -129,6 +129,7 @@
               do_dycore_laplacian_2nd , ad_dycore_laplacian_2nd ,&
               do_dycore_laplacian_4th , ad_dycore_laplacian_4th ,&
               do_dycore_laplacian_6th , ad_dycore_laplacian_6th ,&
+              do_div2d_o4_damping, div2d_o4_damping_coef, &
               eqs_vert_diff,     & ! default yes
               nexpdif_level,     & ! how many levels to add explicit diffusion, default, as nlev
               nsponge,           & ! how many top sponge layer
@@ -356,6 +357,8 @@
    logical            :: do_dycore_laplacian_2nd, ad_dycore_laplacian_2nd
    logical            :: do_dycore_laplacian_4th, ad_dycore_laplacian_4th
    logical            :: do_dycore_laplacian_6th, ad_dycore_laplacian_6th
+   logical            :: do_div2d_o4_damping
+   real(r8)           :: div2d_o4_damping_coef
    logical            :: eqs_vert_diff
    integer(i4)        :: nexpdif_level
    integer(i4)        :: nsponge = 0
@@ -592,6 +595,7 @@
                        do_dycore_laplacian_2nd, ad_dycore_laplacian_2nd, &
                        do_dycore_laplacian_4th, ad_dycore_laplacian_4th, &
                        do_dycore_laplacian_6th, ad_dycore_laplacian_6th, &
+                       do_div2d_o4_damping, div2d_o4_damping_coef, &
                        eqs_vert_diff  , &
                        nexpdif_level  , &
                        nsponge        , &
@@ -786,9 +790,15 @@
 !==============================================================
 
     if(nh_dynamics)then
-       ptendSubDiabPhys  = .true.
-       adjphi            = .true.
-       physics_coupling  = 'P3'
+       if(trim(physpkg).eq.'AMIPW_PHYSICS')then
+          physics_coupling  = 'P3'
+          ptendSubDiabPhys  = .true.
+       end if 
+       if(trim(physpkg).eq.'AMIPC_PHYSICS')then
+          print*,"The present AMIPC_PHYSICS can not be coupled to NH-Dynamics yet"
+          stop
+       end if
+       if(test_real_case) adjphi  = .true.
     end if
 
 !==============================================================

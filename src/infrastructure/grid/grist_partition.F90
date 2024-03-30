@@ -79,7 +79,11 @@ contains
     character(len = 5)                   :: ztmp 
     character(len = 5), allocatable      :: z_list(:)
     character(len = 1), allocatable      :: geo_hash(:)
+#ifdef SPCODE
+    real(r8)                             :: lon, lat, lond, latd
+#else
     real(8)                              :: lon, lat, lond, latd
+#endif
     type(set)                            :: bfs_index, hilbert_index, morton_index
 
     allocate(domain_compute(nprocs))

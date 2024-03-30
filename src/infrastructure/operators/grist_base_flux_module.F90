@@ -12,7 +12,7 @@
 
  module grist_base_flux_module
 
-   use grist_constants,  only: r8, rearth, zero
+   use grist_constants,  only: r8, rearth
 
    implicit none
 
@@ -93,11 +93,8 @@
       part1 = (phi0+phi1)*0.5_r8
       part2 = -1._r8*((length**2)/12._r8)*(der0+der1)
       part3 = (sign(1._r8,wind)*(length**2)*beta/12._r8)*(der1-der0)
-      if(beta.ne.zero)then
-         flux  = (part1+part2+part3)
-      else
-         flux  = part1+part2
-      end if
+
+      flux  = (part1+part2+part3)
 
       return
     end subroutine flux_wrf34

@@ -58,7 +58,11 @@
 
   type(exchange_field_list_2d), pointer :: field_head_2d
   interface project_sphere2tplane 
+#ifdef SPCODE
+      module procedure project_sphere2tplane_r4
+#else
       module procedure project_sphere2tplane_r4, project_sphere2tplane_r8
+#endif
   end interface project_sphere2tplane
 
   contains

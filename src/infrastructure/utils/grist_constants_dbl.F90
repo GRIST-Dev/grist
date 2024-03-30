@@ -19,7 +19,11 @@ module grist_constants_dbl
   integer,  parameter  :: i4      = selected_real_kind(6,20)
   integer,  parameter  :: i8      = selected_real_kind(14,40)
   integer,  parameter  :: r4      = selected_real_kind(6,37)
+#ifdef SPCODE
+  integer,  parameter  :: r8      = selected_real_kind(6,37)
+#else
   integer,  parameter  :: r8      = selected_real_kind(12,100)
+#endif
   integer,  parameter  :: r16     = max(r8,selected_real_kind(27,2400))
 
   real(r8), parameter  :: zero    = 0._r8
