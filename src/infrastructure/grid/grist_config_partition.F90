@@ -9,6 +9,7 @@ module grist_config_partition
   use grist_nml_module
   use grist_grid_file_read,      only: grist_read_grid_file_par
   use grist_constants,           only: i4, r8, i8, pi
+  use grist_constants,           only: r4 => ns
   use grist_domain_types,        only: global_domain, global_domain_data, block_structure, group_comm
   use grist_list,                only: index_list
   use grist_element_types_icosh, only: node_structure  , &
@@ -27,16 +28,19 @@ module grist_config_partition
   use grist_wrap_pf,             only: wrap_open, wrap_close
   use grist_grid_file_vars
 
-  public  :: config_sub_domain , &
-             domain_decompse ,&
-             debug_data_1d ,&
-             debug_data_2d ,&
+  public  :: config_sub_domain    , &
+             domain_decompse      , &
+             debug_data_1d        , &
+             debug_data_2d        , &
              exchange_data_1d_add , &
              exchange_data_1d     , &
              exchange_data_2d_add , &
              exchange_data_2d     , &
              exchange_data_3d_add , &
              exchange_data_3d     , &
+             exchange_data_1d_r4  , &
+             exchange_data_2d_r4  , &
+             exchange_data_3d_r4  , &
              show_basic_info
 
   private
@@ -2046,11 +2050,12 @@ contains
   end subroutine
   
   
-  subroutine exchange_data_1d_add(mesh,field_head,scalar_field_data)
+  subroutine exchange_data_1d_add(mesh,field_head,scalar_field_data,mix_flag)
     !IO
     type(global_domain)                                  :: mesh
     type(exchange_field_list_1d), pointer, intent(inout) :: field_head
     type(scalar_1d_field)       , target,  intent(inout) :: scalar_field_data
+    character(len=*), optional, intent(in)               :: mix_flag
 
     !local
     type(exchange_field_list_1d), pointer, save          :: field_list
@@ -2067,7 +2072,11 @@ contains
     
     field_list%field_data => scalar_field_data
 
-    field_list%dim1 = size(scalar_field_data%f)
+    if(present(mix_flag).and.trim(mix_flag).eq."r4")then
+       field_list%dim1 = size(scalar_field_data%f_r4)
+    else
+       field_list%dim1 = size(scalar_field_data%f)
+    end if
     !IF(scalar_field_data%pos .eq. -1)then
       if((field_list%dim1 .eq. mesh%nv) .or. (field_list%dim1 .eq. mesh%nv_full)) then ! v location
         scalar_field_data%pos = 0
@@ -2081,7 +2090,6 @@ contains
     !END IF
   end subroutine exchange_data_1d_add
 
-    
   subroutine exchange_data_1d_clean(field_head)
     !IO
     type(exchange_field_list_1d), pointer, intent(inout) :: field_head
@@ -2361,11 +2369,273 @@ contains
   end subroutine exchange_data_1d
 
 
-  subroutine exchange_data_2d_add(mesh,field_head,scalar_field_data)
+  subroutine exchange_data_1d_r4(local_block,field_head)
+    !io
+    use omp_lib
+    type(block_structure),        target,  intent(in)    :: local_block
+    type(exchange_field_list_1d), pointer, intent(inout) :: field_head
+
+    !local
+    integer,  allocatable                                :: reqs_send(:), reqs_recv(:), reqs(:)
+    integer                                              :: ierr, c, iv, ie, it, dst_s, dst_r
+    integer                                              :: i_list, iblock, iv_list, it_list, ie_list, n, nr, ns
+    integer                                              :: list_n, tmp_n, n_v, n_t, n_e, list_nv, list_nt, list_ne
+    INTEGER,  allocatable                                :: status(:,:) !STATUS(MPI_STATUS_SIZE)
+
+    real(r4), allocatable                                :: field_data_nv_send(:,:)!bdry
+    real(r4), allocatable                                :: field_data_ne_send(:,:)
+    real(r4), allocatable                                :: field_data_nt_send(:,:)
+    
+    real(r4), allocatable                                :: field_data_nv_recv(:,:)!halo
+    real(r4), allocatable                                :: field_data_ne_recv(:,:)
+    real(r4), allocatable                                :: field_data_nt_recv(:,:)
+
+    type(exchange_field_list_1d), pointer                :: tmpf
+
+    tmpf => field_head
+    list_n = 0
+    iblock = mpi_rank()
+     
+    list_nv=0; list_nt=0; list_ne=0
+    do while(associated(tmpf))
+      select case(tmpf%field_data%pos)
+      case(0)
+        list_nv = list_nv + 1
+      case(1)
+        list_nt = list_nt + 1
+      case(6)
+        list_ne = list_ne + 1
+      case default
+        stop
+      end select
+      list_n = list_n + 1   
+      tmpf =>  tmpf%next
+    end do
+    n = 0
+    if(list_nv .gt. 0) n = n + 1
+    if(list_nt .gt. 0) n = n + 1
+    if(list_ne .gt. 0) n = n + 1
+    
+    if(list_nv .gt. 0) allocate(field_data_nv_send(list_nv*local_block%max_nv_send,local_block%nnb), source=0._r4)
+    if(list_nv .gt. 0) allocate(field_data_nv_recv(list_nv*local_block%max_nv_recv,local_block%nnb))
+    if(list_nt .gt. 0) allocate(field_data_nt_send(list_nt*local_block%max_nt_send,local_block%nnb), source=0._r4)
+    if(list_nt .gt. 0) allocate(field_data_nt_recv(list_nt*local_block%max_nt_recv,local_block%nnb))
+    if(list_ne .gt. 0) allocate(field_data_ne_send(list_ne*local_block%max_ne_send,local_block%nnb), source=0._r4)
+    if(list_ne .gt. 0) allocate(field_data_ne_recv(list_ne*local_block%max_ne_recv,local_block%nnb))
+
+    !assign send_data value
+    allocate(reqs_send(local_block%nnb * n))
+    allocate(reqs_recv(local_block%nnb * n))
+    allocate(status(MPI_STATUS_SIZE, local_block%nnb*n))
+    ns=1; nr=1
+    do c = 1, local_block%nnb
+      dst_s = local_block%send_sites(c)%cpuid
+      dst_r = local_block%recv_sites(c)%cpuid
+      tmpf => field_head
+      iv_list=0; it_list=0; ie_list=0
+      do i_list = 0, list_n-1
+        select case(tmpf%field_data%pos)
+        !nv
+        case(0)
+          n_v = local_block%send_sites(c)%nv
+!$omp parallel  private(iv,tmp_n) 
+!$omp do schedule(dynamic,5)
+          do iv = 1, n_v
+            tmp_n = local_block%send_sites(c)%local_v(iv)
+            field_data_nv_send(iv+n_v*iv_list,c) = tmpf%field_data%f_r4(tmp_n)
+          end do
+!$omp end do nowait 
+!$omp end parallel 
+          iv_list = iv_list + 1
+        !nt
+        case(1)
+          n_t = local_block%send_sites(c)%nt
+!$omp parallel  private(it,tmp_n) 
+!$omp do schedule(dynamic,5)
+          do it = 1, n_t
+            tmp_n = local_block%send_sites(c)%local_t(it)
+            field_data_nt_send(it+n_t*it_list,c) = tmpf%field_data%f_r4(tmp_n)
+          end do
+!$omp end do nowait 
+!$omp end parallel 
+          it_list = it_list + 1
+        !ne
+        case(6)
+          n_e = local_block%send_sites(c)%ne
+!$omp parallel  private(ie,tmp_n) 
+!$omp do schedule(dynamic,5)
+          do ie = 1, n_e
+            tmp_n = local_block%send_sites(c)%local_e(ie)
+            field_data_ne_send(ie+n_e*ie_list,c) = tmpf%field_data%f_r4(tmp_n)
+          end do
+!$omp end do nowait 
+!$omp end parallel 
+          ie_list = ie_list + 1
+        case default
+          print*,"Invalid scalar field data type"
+        end select  
+        tmpf => tmpf%next
+      end do
+
+      if (list_nv .gt. 0) then
+        if (r4 .eq. 8) then
+          call MPI_Isend(field_data_nv_send(:,c), &
+                         local_block%send_sites(c)%nv*list_nv, MPI_REAL8, &
+                         dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_nv_recv(:,c), &
+                         local_block%recv_sites(c)%nv*list_nv, MPI_REAL8, &
+                         dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        elseif (r4 .eq. 4) then
+          call MPI_Isend(field_data_nv_send(:,c), &
+                         local_block%send_sites(c)%nv*list_nv, MPI_REAL, &
+                         dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_nv_recv(:,c), &
+                         local_block%recv_sites(c)%nv*list_nv, MPI_REAL, &
+                         dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        end if
+        ns=ns+1; nr=nr+1
+      endif
+
+      if (list_nt .gt. 0) then
+        if (r4 .eq. 8) then
+          call MPI_Isend(field_data_nt_send(:,c), &
+                         local_block%send_sites(c)%nt*list_nt, MPI_REAL8, &
+                         dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_nt_recv(:,c), &
+                         local_block%recv_sites(c)%nt*list_nt, MPI_REAL8, &
+                         dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        elseif (r4 .eq. 4) then
+          call MPI_Isend(field_data_nt_send(:,c), &
+                         local_block%send_sites(c)%nt*list_nt, MPI_REAL, &
+                         dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_nt_recv(:,c), &
+                         local_block%recv_sites(c)%nt*list_nt, MPI_REAL, &
+                         dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        end if
+        ns=ns+1; nr=nr+1
+      endif
+
+      if (list_ne .gt. 0) then
+        if (r4 .eq. 8) then
+          call MPI_Isend(field_data_ne_send(:,c), &
+                         local_block%send_sites(c)%ne*list_ne, MPI_REAL8, &
+                         dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_ne_recv(:,c), &
+                         local_block%recv_sites(c)%ne*list_ne, MPI_REAL8, &
+                         dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        elseif (r4 .eq. 4) then
+          call MPI_Isend(field_data_ne_send(:,c), &
+                         local_block%send_sites(c)%ne*list_ne, MPI_REAL, &
+                         dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_ne_recv(:,c), &
+                         local_block%recv_sites(c)%ne*list_ne, MPI_REAL, &
+                         dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        end if
+        ns=ns+1; nr=nr+1
+      endif
+
+    end do
+
+    call MPI_WaitAll(n*local_block%nnb, reqs_send, status, ierr)
+    call MPI_WaitAll(n*local_block%nnb, reqs_recv, status, ierr)
+
+    !get recv_data value
+    do c = 1, local_block%nnb
+      tmpf => field_head
+      iv_list=0; it_list=0; ie_list=0
+      do i_list=0,list_n-1
+        select case(tmpf%field_data%pos)
+        !nv
+        case(0)
+          n_v = local_block%recv_sites(c)%nv
+!$omp parallel  private(iv,tmp_n) 
+!$omp do schedule(dynamic,5)
+          do iv = 1, n_v
+            tmp_n = local_block%recv_sites(c)%local_v(iv)
+            tmpf%field_data%f_r4(tmp_n) = field_data_nv_recv(iv+n_v*iv_list,c)
+          end do
+!$omp end do nowait 
+!$omp end parallel 
+          iv_list = iv_list + 1
+        !nt
+        case(1)
+          n_t = local_block%recv_sites(c)%nt
+!$omp parallel  private(it,tmp_n) 
+!$omp do schedule(dynamic,5)
+          do it = 1, n_t
+            tmp_n = local_block%recv_sites(c)%local_t(it)
+            tmpf%field_data%f_r4(tmp_n) = field_data_nt_recv(it+n_t*it_list,c)
+          end do
+!$omp end do nowait 
+!$omp end parallel 
+          it_list = it_list + 1
+        !ne
+        case(6)
+          n_e = local_block%recv_sites(c)%ne
+!$omp parallel  private(ie,tmp_n) 
+!$omp do schedule(dynamic,5)
+          do ie = 1, n_e
+            tmp_n = local_block%recv_sites(c)%local_e(ie)
+            tmpf%field_data%f_r4(tmp_n) = field_data_ne_recv(ie+n_e*ie_list,c)
+          end do
+!$omp end do nowait 
+!$omp end parallel 
+          ie_list = ie_list + 1
+        case default
+          print*,"Invalid scalar field data type"
+        end select
+        tmpf => tmpf%next
+      end do
+    end do
+
+    call exchange_data_1d_clean(field_head)
+
+    if(.false.)  then
+        
+      do c = 1, local_block%nnb
+       open(101, file=i2s(iblock)//".send.cell."//i2s(local_block%send_sites(c)%cpuid)//".txt")
+           n_v = size(local_block%send_sites(c)%v)
+       write(101, "(G20.10)", advance='yes') field_data_nv_send(1:n_v,c)
+       close(101)
+
+       open(2, file=i2s(iblock)//".recv.cell."//i2s(local_block%recv_sites(c)%cpuid)//".txt")
+           n_v = size(local_block%recv_sites(c)%v)
+       write(2, "(G20.10)", advance='yes') field_data_nv_recv(1:n_v,c)
+       close(2)
+
+       open(101, file=i2s(iblock)//".send.edge."//i2s(local_block%send_sites(c)%cpuid)//".txt")
+           n_e = size(local_block%send_sites(c)%e)
+       write(101, "(G20.10)", advance='yes') field_data_ne_send(1:n_e,c)
+       close(101)
+
+       open(2, file=i2s(iblock)//".recv.edge."//i2s(local_block%recv_sites(c)%cpuid)//".txt")
+           n_e = size(local_block%recv_sites(c)%e)
+       write(2, "(G20.10)", advance='yes') field_data_ne_recv(1:n_e,c)
+       close(2)
+
+      end do
+    end if
+
+!clean  
+    if(list_nv .gt. 0) deallocate(field_data_nv_send)
+    if(list_nv .gt. 0) deallocate(field_data_nv_recv)    
+    if(list_nt .gt. 0) deallocate(field_data_nt_send)
+    if(list_nt .gt. 0) deallocate(field_data_nt_recv)    
+    if(list_ne .gt. 0) deallocate(field_data_ne_send)
+    if(list_ne .gt. 0) deallocate(field_data_ne_recv)
+    deallocate(reqs_send)
+    deallocate(reqs_recv)
+    deallocate(status)
+
+  end subroutine exchange_data_1d_r4
+
+
+  subroutine exchange_data_2d_add(mesh,field_head,scalar_field_data, mix_flag)
     !IO
     type(global_domain)                                  :: mesh
     type(exchange_field_list_2d), intent(inout), pointer :: field_head
     type(scalar_2d_field),        intent(inout), target  :: scalar_field_data
+    character(len=*), optional, intent(in)               :: mix_flag
 
     !local
     type(exchange_field_list_2d), save,          pointer :: field_list
@@ -2381,8 +2651,14 @@ contains
     end if
 
     field_list%field_data => scalar_field_data
-    field_list%dim1 = size(scalar_field_data%f, 1)
-    field_list%dim2 = size(scalar_field_data%f, 2)
+
+    if(present(mix_flag).and.trim(mix_flag).eq."r4")then
+       field_list%dim1 = size(scalar_field_data%f_r4, 1)
+       field_list%dim2 = size(scalar_field_data%f_r4, 2)
+    else
+       field_list%dim1 = size(scalar_field_data%f, 1)
+       field_list%dim2 = size(scalar_field_data%f, 2)
+    end if
     
     !IF(scalar_field_data%pos .eq. -1)then
       if((field_list%dim2 .eq. mesh%nv) .or. (field_list%dim2 .eq. mesh%nv_full)) then ! v location
@@ -2397,7 +2673,6 @@ contains
     !END IF
 
   end subroutine exchange_data_2d_add
-
 
   subroutine exchange_data_2d_clean(field_head)
     !IO
@@ -2682,12 +2957,278 @@ contains
 
   end subroutine exchange_data_2d
 
+  subroutine exchange_data_2d_r4(local_block,field_head)
+    !io
+    use omp_lib
+    type(block_structure),        target,  intent(in)    :: local_block
+    type(exchange_field_list_2d), pointer, intent(inout) :: field_head
 
-  subroutine exchange_data_3d_add(mesh,field_head,scalar_field_data)
+    !local
+    integer,  allocatable                                :: reqs_send(:), reqs_recv(:), reqs(:)
+    integer                                              :: ierr, c, iv, ie, it, dst_s, dst_r
+    integer                                              :: i_list, iblock, iv_list, it_list, ie_list, n, nr, ns
+    integer                                              :: list_n, tmp_n, n_v, n_t, n_e, list_nv, list_nt, list_ne
+    integer                                              :: maxdim1, sizedim1
+
+    INTEGER,  allocatable                                :: status(:,:) !STATUS(MPI_STATUS_SIZE)
+
+    real(r4), allocatable                                :: field_data_nv_send(:,:,:)!bdry
+    real(r4), allocatable                                :: field_data_ne_send(:,:,:)
+    real(r4), allocatable                                :: field_data_nt_send(:,:,:)
+
+    real(r4), allocatable                                :: field_data_nv_recv(:,:,:)!halo
+    real(r4), allocatable                                :: field_data_ne_recv(:,:,:)
+    real(r4), allocatable                                :: field_data_nt_recv(:,:,:)
+    type(exchange_field_list_2d), pointer                :: tmpf
+
+    tmpf => field_head
+    maxdim1 = 0
+    do while(associated(tmpf))
+      maxdim1 = max(maxdim1, tmpf%dim1)
+      tmpf =>  tmpf%next
+    end do
+    list_n = 0
+    iblock = mpi_rank()
+
+    list_nv=0; list_nt=0; list_ne=0
+    tmpf => field_head
+    do while(associated(tmpf))
+      select case(tmpf%field_data%pos)
+      case(0)
+        list_nv = list_nv + 1
+      case(1)
+        list_nt = list_nt + 1
+      case(6)
+        list_ne = list_ne + 1
+      case default
+        stop
+      end select
+      list_n = list_n + 1   
+      tmpf =>  tmpf%next
+    end do
+    n=0
+    if(list_nv.gt.0) n=n+1
+    if(list_nt.gt.0) n=n+1
+    if(list_ne.gt.0) n=n+1
+
+    if(list_nv.gt.0) allocate(field_data_nv_send(maxdim1,list_nv*local_block%max_nv_send,local_block%nnb), source=0._r4)
+    if(list_nv.gt.0) allocate(field_data_nv_recv(maxdim1,list_nv*local_block%max_nv_recv,local_block%nnb))
+    if(list_nt.gt.0) allocate(field_data_nt_send(maxdim1,list_nt*local_block%max_nt_send,local_block%nnb), source=0._r4)
+    if(list_nt.gt.0) allocate(field_data_nt_recv(maxdim1,list_nt*local_block%max_nt_recv,local_block%nnb))
+    if(list_ne.gt.0) allocate(field_data_ne_send(maxdim1,list_ne*local_block%max_ne_send,local_block%nnb), source=0._r4)
+    if(list_ne.gt.0) allocate(field_data_ne_recv(maxdim1,list_ne*local_block%max_ne_recv,local_block%nnb))
+
+    !assign send_data value
+    allocate(reqs_send(local_block%nnb * n))
+    allocate(reqs_recv(local_block%nnb * n))
+    allocate(status(MPI_STATUS_SIZE, local_block%nnb*n))
+    ns=1; nr=1
+
+    do c = 1, local_block%nnb
+      dst_s = local_block%send_sites(c)%cpuid
+      dst_r = local_block%recv_sites(c)%cpuid
+      tmpf => field_head
+      iv_list=0; it_list=0; ie_list=0
+      do i_list = 0, list_n-1
+        select case(tmpf%field_data%pos)
+        !nv
+        case(0)
+          n_v = local_block%send_sites(c)%nv
+          sizedim1 = tmpf%dim1
+!$omp parallel private(iv,tmp_n) 
+!$omp do schedule(dynamic,5)
+          do iv = 1, n_v
+            tmp_n = local_block%send_sites(c)%local_v(iv)
+            field_data_nv_send(1:sizedim1,iv+n_v*iv_list,c) = tmpf%field_data%f_r4(1:sizedim1,tmp_n)
+          end do
+!$omp end do nowait 
+!$omp end parallel 
+          iv_list = iv_list + 1
+        !nt
+        case(1)
+          n_t = local_block%send_sites(c)%nt
+          sizedim1 = tmpf%dim1
+!$omp parallel  private(it,tmp_n) 
+!$omp do schedule(dynamic,5)
+          do it = 1, n_t
+            tmp_n = local_block%send_sites(c)%local_t(it)
+            field_data_nt_send(1:sizedim1,it+n_t*it_list,c) = tmpf%field_data%f_r4(1:sizedim1,tmp_n)
+          end do
+!$omp end do nowait 
+!$omp end parallel 
+          it_list = it_list + 1
+        !ne
+        case(6)
+          n_e = local_block%send_sites(c)%ne
+          sizedim1 = tmpf%dim1
+!$omp parallel private(ie,tmp_n) 
+!$omp do schedule(dynamic,5)
+          do ie = 1, n_e
+            tmp_n = local_block%send_sites(c)%local_e(ie)
+            field_data_ne_send(1:sizedim1,ie+n_e*ie_list,c) = tmpf%field_data%f_r4(1:sizedim1,tmp_n)
+          end do
+!$omp end do nowait 
+!$omp end parallel 
+          ie_list = ie_list + 1
+        case default
+          print*,"Invalid scalar field data type"
+        end select
+        tmpf => tmpf%next
+      end do
+      if (list_nv .gt. 0) then
+        if (r4 .eq. 8) then
+          call MPI_Isend(field_data_nv_send(:,:,c), &
+               local_block%send_sites(c)%nv*list_nv*maxdim1, MPI_REAL8, &
+               dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_nv_recv(:,:,c), &
+               local_block%recv_sites(c)%nv*list_nv*maxdim1, MPI_REAL8, &
+               dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        elseif (r4 .eq. 4) then
+          call MPI_Isend(field_data_nv_send(:,:,c), &
+               local_block%send_sites(c)%nv*list_nv*maxdim1, MPI_REAL, &
+               dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_nv_recv(:,:,c), &
+               local_block%recv_sites(c)%nv*list_nv*maxdim1, MPI_REAL, &
+               dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        end if
+        ns=ns+1; nr=nr+1
+      endif
+      if (list_nt .gt. 0) then
+        if (r4 .eq. 8) then
+          call MPI_Isend(field_data_nt_send(:,:,c), &
+               local_block%send_sites(c)%nt*list_nt*maxdim1, MPI_REAL8, &
+               dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_nt_recv(:,:,c), &
+               local_block%recv_sites(c)%nt*list_nt*maxdim1, MPI_REAL8, &
+               dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        elseif (r4 .eq. 4) then
+          call MPI_Isend(field_data_nt_send(:,:,c), &
+               local_block%send_sites(c)%nt*list_nt*maxdim1, MPI_REAL, &
+               dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_nt_recv(:,:,c), &
+               local_block%recv_sites(c)%nt*list_nt*maxdim1, MPI_REAL, &
+               dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        end if
+        ns=ns+1; nr=nr+1
+      endif
+      if (list_ne .gt. 0) then
+        if (r4 .eq. 8) then
+          call MPI_Isend(field_data_ne_send(:,:,c), &
+               local_block%send_sites(c)%ne*list_ne*maxdim1, MPI_REAL8, &
+               dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_ne_recv(:,:,c), &
+               local_block%recv_sites(c)%ne*list_ne*maxdim1, MPI_REAL8, &
+               dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        elseif (r4 .eq. 4) then
+          call MPI_Isend(field_data_ne_send(:,:,c), &
+               local_block%send_sites(c)%ne*list_ne*maxdim1, MPI_REAL, &
+               dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_ne_recv(:,:,c), &
+               local_block%recv_sites(c)%ne*list_ne*maxdim1, MPI_REAL, &
+               dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        end if
+        ns=ns+1; nr=nr+1
+      endif
+    end do
+
+    call MPI_WaitAll(n*local_block%nnb, reqs_send, status, ierr)
+    call MPI_WaitAll(n*local_block%nnb, reqs_recv, status, ierr)
+
+    !get recv_data value
+    do c = 1, local_block%nnb
+      tmpf => field_head
+      iv_list=0; it_list=0; ie_list=0;
+      do i_list = 0, list_n-1
+        select case(tmpf%field_data%pos)
+        !nv
+        case(0)
+          n_v = local_block%recv_sites(c)%nv
+          sizedim1 = tmpf%dim1
+!$omp parallel  private(iv,tmp_n) 
+!$omp do schedule(dynamic,5)
+          do iv = 1, n_v
+            tmp_n = local_block%recv_sites(c)%local_v(iv)
+            tmpf%field_data%f_r4(1:sizedim1,tmp_n) = field_data_nv_recv(1:sizedim1,iv+n_v*iv_list,c)
+          end do
+!$omp end do nowait 
+!$omp end parallel 
+          iv_list = iv_list + 1
+        !nt
+        case(1)
+          n_t = local_block%recv_sites(c)%nt
+          sizedim1 = tmpf%dim1
+!$omp parallel  private(it,tmp_n) 
+!$omp do schedule(dynamic,5)
+          do it = 1, n_t
+            tmp_n = local_block%recv_sites(c)%local_t(it)
+            tmpf%field_data%f_r4(1:sizedim1,tmp_n) = field_data_nt_recv(1:sizedim1,it+n_t*it_list,c)
+          end do
+!$omp end do nowait 
+!$omp end parallel 
+          it_list = it_list + 1
+        !ne
+        case(6)
+          n_e = local_block%recv_sites(c)%ne
+          sizedim1 = tmpf%dim1
+!$omp parallel  private(ie,tmp_n) 
+!$omp do schedule(dynamic,5)
+          do ie = 1, n_e
+            tmp_n = local_block%recv_sites(c)%local_e(ie)
+            tmpf%field_data%f_r4(1:sizedim1,tmp_n) = field_data_ne_recv(1:sizedim1,ie+n_e*ie_list,c)
+          end do
+!$omp end do nowait 
+!$omp end parallel 
+          ie_list = ie_list + 1
+        case default
+          print*,"Invalid scalar field data type"
+        end select  
+          tmpf => tmpf%next
+      end do
+    end do
+
+    call exchange_data_2d_clean(field_head)
+
+    if(.false.)  then
+      do c = 1, local_block%nnb
+         open(101, file=i2s(iblock)//".send.cell."//i2s(local_block%send_sites(c)%cpuid)//".txt")
+         n_v = size(local_block%send_sites(c)%v)
+         write(101, "(G20.10)", advance='yes') field_data_nv_send(:,1:n_v,c)
+         close(101) 
+         open(2, file=i2s(iblock)//".recv.cell."//i2s(local_block%recv_sites(c)%cpuid)//".txt")
+         n_v = size(local_block%recv_sites(c)%v)
+         write(2, "(G20.10)", advance='yes') field_data_nv_recv(:,1:n_v,c)
+         close(2)
+         open(101, file=i2s(iblock)//".send.edge."//i2s(local_block%send_sites(c)%cpuid)//".txt")
+         n_e = size(local_block%send_sites(c)%e)
+         write(101, "(G20.10)", advance='yes') field_data_ne_send(:,1:n_e,c)
+         close(101) 
+         open(2, file=i2s(iblock)//".recv.edge."//i2s(local_block%recv_sites(c)%cpuid)//".txt")
+         n_e = size(local_block%recv_sites(c)%e)
+         write(2, "(G20.10)", advance='yes') field_data_ne_recv(:,1:n_e,c)
+         close(2)
+      end do
+    end if
+
+    !clean  
+    if(list_nv .gt. 0) deallocate(field_data_nv_send)
+    if(list_nv .gt. 0) deallocate(field_data_nv_recv)    
+    if(list_nt .gt. 0) deallocate(field_data_nt_send)
+    if(list_nt .gt. 0) deallocate(field_data_nt_recv)    
+    if(list_ne .gt. 0) deallocate(field_data_ne_send)
+    if(list_ne .gt. 0) deallocate(field_data_ne_recv)
+    deallocate(reqs_send)
+    deallocate(reqs_recv)
+    deallocate(status)
+
+  end subroutine exchange_data_2d_r4
+
+
+  subroutine exchange_data_3d_add(mesh,field_head,scalar_field_data,mix_flag)
     !IO
     type(global_domain)                                  :: mesh
     type(exchange_field_list_3d), pointer, intent(inout) :: field_head
     type(scalar_3d_field)       , target,  intent(inout) :: scalar_field_data
+    character(len=*), optional, intent(in)               :: mix_flag
 
     !local
     type(exchange_field_list_3d), pointer, save          :: field_list
@@ -2703,9 +3244,16 @@ contains
     end if
 
     field_list%field_data => scalar_field_data
-    field_list%dim1 = size(scalar_field_data%f, 1) 
-    field_list%dim2 = size(scalar_field_data%f, 2) 
-    field_list%dim3 = size(scalar_field_data%f, 3)
+
+    if(present(mix_flag).and.trim(mix_flag).eq."r4")then
+       field_list%dim1 = size(scalar_field_data%f_r4, 1)
+       field_list%dim2 = size(scalar_field_data%f_r4, 2)
+       field_list%dim3 = size(scalar_field_data%f_r4, 3)
+    else
+       field_list%dim1 = size(scalar_field_data%f, 1)
+       field_list%dim2 = size(scalar_field_data%f, 2)
+       field_list%dim3 = size(scalar_field_data%f, 3)
+    end if
 
     !IF(scalar_field_data%pos .eq. -1)then
       if((field_list%dim3 .eq. mesh%nv) .or. (field_list%dim3 .eq. mesh%nv_full)) then ! v location
@@ -2720,7 +3268,6 @@ contains
     !END IF
 
   end subroutine exchange_data_3d_add
-
 
   subroutine exchange_data_3d_clean(field_head)
     !IO
@@ -2967,6 +3514,235 @@ contains
     deallocate(status)
 
   end subroutine exchange_data_3d
+
+
+  subroutine exchange_data_3d_r4(local_block,field_head)
+    !io
+    type(block_structure),        target,  intent(in)    :: local_block
+    type(exchange_field_list_3d), pointer, intent(inout) :: field_head
+
+    !local
+    integer, allocatable                                 :: reqs_send(:), reqs_recv(:), reqs(:)
+    integer                                              :: ierr, c, iv, ie, it, dst_s, dst_r
+    integer                                              :: i_list, iblock, iv_list, it_list, ie_list, n, nr, ns
+    integer                                              :: list_n, tmp_n, n_v, n_t, n_e, list_nv, list_nt, list_ne
+    integer                                              :: maxdim1, maxdim2, sizedim1, sizedim2
+
+    INTEGER, allocatable                                 :: status(:,:) !STATUS(MPI_STATUS_SIZE)
+
+    real(r4),allocatable                                 :: field_data_nv_send(:,:,:,:)!bdry
+    real(r4),allocatable                                 :: field_data_ne_send(:,:,:,:)
+    real(r4),allocatable                                 :: field_data_nt_send(:,:,:,:)
+
+    real(r4),allocatable                                 :: field_data_nv_recv(:,:,:,:)!halo
+    real(r4),allocatable                                 :: field_data_ne_recv(:,:,:,:)
+    real(r4),allocatable                                 :: field_data_nt_recv(:,:,:,:)
+    type(exchange_field_list_3d), pointer                :: tmpf
+
+    tmpf => field_head
+    maxdim1 = 0
+    maxdim2 = 0
+    do while(associated(tmpf))
+      maxdim1 = max(maxdim1, tmpf%dim1)
+      maxdim2 = max(maxdim2, tmpf%dim2)
+      tmpf =>  tmpf%next
+    end do
+
+    list_n = 0
+    iblock = mpi_rank()
+    tmpf => field_head
+
+    list_nv=0; list_nt=0; list_ne=0
+    do while(associated(tmpf))
+      select case(tmpf%field_data%pos)
+      case(0)
+        list_nv = list_nv + 1
+      case(1)
+        list_nt = list_nt + 1
+      case(6)
+        list_ne = list_ne + 1
+      case default
+        stop
+      end select
+      list_n = list_n + 1   
+      tmpf =>  tmpf%next
+    end do
+    n=0
+    if(list_nv.gt.0) n=n+1
+    if(list_nt.gt.0) n=n+1
+    if(list_ne.gt.0) n=n+1
+
+    ! nlev  nlev+1??
+    if(list_nv.gt.0) allocate(field_data_nv_send(maxdim1,maxdim2,list_nv*local_block%max_nv_send,local_block%nnb), source=0._r4)
+    if(list_nv.gt.0) allocate(field_data_nv_recv(maxdim1,maxdim2,list_nv*local_block%max_nv_recv,local_block%nnb))
+    if(list_nt.gt.0) allocate(field_data_nt_send(maxdim1,maxdim2,list_nt*local_block%max_nt_send,local_block%nnb), source=0._r4)
+    if(list_nt.gt.0) allocate(field_data_nt_recv(maxdim1,maxdim2,list_nt*local_block%max_nt_recv,local_block%nnb))
+    if(list_ne.gt.0) allocate(field_data_ne_send(maxdim1,maxdim2,list_ne*local_block%max_ne_send,local_block%nnb), source=0._r4)
+    if(list_ne.gt.0) allocate(field_data_ne_recv(maxdim1,maxdim2,list_ne*local_block%max_ne_recv,local_block%nnb))
+
+    !assign send_data value
+    allocate(reqs_send(local_block%nnb * n))
+    allocate(reqs_recv(local_block%nnb * n))
+    allocate(status(MPI_STATUS_SIZE, local_block%nnb*n))
+    ns=1; nr=1
+    do c = 1, local_block%nnb
+      dst_s = local_block%send_sites(c)%cpuid
+      dst_r = local_block%recv_sites(c)%cpuid
+      tmpf => field_head
+      iv_list=0; it_list=0; ie_list=0
+      do i_list = 0, list_n-1
+        select case(tmpf%field_data%pos)
+        !nv
+        case(0)
+          n_v = local_block%send_sites(c)%nv
+          sizedim1 = tmpf%dim1
+          sizedim2 = tmpf%dim2
+          do iv = 1, n_v
+            tmp_n = local_block%send_sites(c)%local_v(iv)
+            field_data_nv_send(1:sizedim1,1:sizedim2,iv+n_v*iv_list,c) = tmpf%field_data%f_r4(1:sizedim1,1:sizedim2,tmp_n)
+          end do
+          iv_list = iv_list + 1
+        !nt
+        case(1)
+          n_t = local_block%send_sites(c)%nt
+          sizedim1 = tmpf%dim1
+          sizedim2 = tmpf%dim2
+          do it = 1, n_t
+            tmp_n = local_block%send_sites(c)%local_t(it)
+            field_data_nt_send(1:sizedim1,1:sizedim2,it+n_t*it_list,c) = tmpf%field_data%f_r4(1:sizedim1,1:sizedim2,tmp_n)
+          end do
+          it_list = it_list + 1
+        !ne
+        case(6)
+          n_e = local_block%send_sites(c)%ne
+          sizedim1 = tmpf%dim1
+          sizedim2 = tmpf%dim2
+          do ie = 1, n_e
+            tmp_n = local_block%send_sites(c)%local_e(ie)
+            field_data_ne_send(1:sizedim1,1:sizedim2,ie+n_e*ie_list,c) = tmpf%field_data%f_r4(1:sizedim1,1:sizedim2,tmp_n)
+          end do
+          ie_list = ie_list + 1
+        case default
+          print*,"Invalid scalar field data type"
+        end select
+        tmpf => tmpf%next
+      end do
+      if (list_nv .gt. 0) then
+        if (r4 .eq. 8) then
+          call MPI_Isend(field_data_nv_send(:,:,:,c), &
+               local_block%send_sites(c)%nv*list_nv*maxdim2*maxdim1, MPI_REAL8, &
+               dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_nv_recv(:,:,:,c), &
+               local_block%recv_sites(c)%nv*list_nv*maxdim2*maxdim1, MPI_REAL8, &
+               dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        elseif (r4 .eq. 4) then
+          call MPI_Isend(field_data_nv_send(:,:,:,c), &
+               local_block%send_sites(c)%nv*list_nv*maxdim2*maxdim1, MPI_REAL, &
+               dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_nv_recv(:,:,:,c), &
+               local_block%recv_sites(c)%nv*list_nv*maxdim2*maxdim1, MPI_REAL, &
+               dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        end if
+        ns=ns+1; nr=nr+1
+      endif
+      if (list_nt .gt. 0) then
+        if (r4 .eq. 8) then
+          call MPI_Isend(field_data_nt_send(:,:,:,c), &
+               local_block%send_sites(c)%nt*list_nt*maxdim2*maxdim1, MPI_REAL8, &
+               dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_nt_recv(:,:,:,c), &
+               local_block%recv_sites(c)%nt*list_nt*maxdim2*maxdim1, MPI_REAL8, &
+               dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        elseif (r4 .eq. 4) then
+          call MPI_Isend(field_data_nt_send(:,:,:,c), &
+               local_block%send_sites(c)%nt*list_nt*maxdim2*maxdim1, MPI_REAL, &
+               dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_nt_recv(:,:,:,c), &
+               local_block%recv_sites(c)%nt*list_nt*maxdim2*maxdim1, MPI_REAL, &
+               dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        end if
+        ns=ns+1; nr=nr+1
+      endif
+      if (list_ne .gt. 0) then
+        if (r4 .eq. 8) then
+          call MPI_Isend(field_data_ne_send(:,:,:,c), &
+               local_block%send_sites(c)%ne*list_ne*maxdim2*maxdim1, MPI_REAL8, &
+               dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_ne_recv(:,:,:,c), &
+               local_block%recv_sites(c)%ne*list_ne*maxdim2*maxdim1, MPI_REAL8, &
+               dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        elseif (r4 .eq. 4) then
+          call MPI_Isend(field_data_ne_send(:,:,:,c), &
+               local_block%send_sites(c)%ne*list_ne*maxdim2*maxdim1, MPI_REAL, &
+               dst_s, 102, local_block%comm, reqs_send(ns), ierr)
+          call MPI_Irecv(field_data_ne_recv(:,:,:,c), &
+               local_block%recv_sites(c)%ne*list_ne*maxdim2*maxdim1, MPI_REAL, &
+               dst_r, 102, local_block%comm, reqs_recv(nr), ierr)
+        end if
+        ns=ns+1; nr=nr+1
+      endif
+    end do
+
+    call MPI_WaitAll(n*local_block%nnb, reqs_send, status, ierr)
+    call MPI_WaitAll(n*local_block%nnb, reqs_recv, status, ierr)
+
+    !get recv_data value
+    do c = 1, local_block%nnb
+      tmpf => field_head
+      iv_list=0; it_list=0; ie_list=0;
+      do i_list = 0, list_n-1
+        select case(tmpf%field_data%pos)
+        !nv
+        case(0)
+          n_v = local_block%recv_sites(c)%nv
+          sizedim1 = tmpf%dim1
+          sizedim2 = tmpf%dim2
+          do iv = 1, n_v
+            tmp_n = local_block%recv_sites(c)%local_v(iv)
+            tmpf%field_data%f_r4(1:sizedim1,1:sizedim2,tmp_n) = field_data_nv_recv(1:sizedim1,1:sizedim2,iv+n_v*iv_list,c)
+          end do
+          iv_list = iv_list + 1
+        !nt
+        case(1)
+          n_t = local_block%recv_sites(c)%nt
+          sizedim1 = tmpf%dim1
+          sizedim2 = tmpf%dim2
+          do it = 1, n_t
+            tmp_n = local_block%recv_sites(c)%local_t(it)
+            tmpf%field_data%f_r4(1:sizedim1,1:sizedim2,tmp_n) = field_data_nt_recv(1:sizedim1,1:sizedim2,it+n_t*it_list,c)
+          end do
+          it_list = it_list + 1
+        !ne
+        case(6)
+          n_e = local_block%recv_sites(c)%ne
+          sizedim1 = tmpf%dim1
+          sizedim2 = tmpf%dim2
+          do ie = 1, n_e
+            tmp_n = local_block%recv_sites(c)%local_e(ie)
+            tmpf%field_data%f_r4(1:sizedim1,1:sizedim2,tmp_n) = field_data_ne_recv(1:sizedim1,1:sizedim2,ie+n_e*ie_list,c)
+          end do
+          ie_list = ie_list + 1
+        case default
+          print*,"Invalid scalar field data type"
+        end select  
+          tmpf => tmpf%next
+      end do
+    end do
+
+    call exchange_data_3d_clean(field_head)
+
+    !clean  
+    if(list_nv .gt. 0) deallocate(field_data_nv_send)
+    if(list_nv .gt. 0) deallocate(field_data_nv_recv)    
+    if(list_nt .gt. 0) deallocate(field_data_nt_send)
+    if(list_nt .gt. 0) deallocate(field_data_nt_recv)    
+    if(list_ne .gt. 0) deallocate(field_data_ne_send)
+    if(list_ne .gt. 0) deallocate(field_data_ne_recv)
+    deallocate(reqs_send)
+    deallocate(reqs_recv)
+    deallocate(status)
+
+  end subroutine exchange_data_3d_r4
 
 
   subroutine debug_data_1d(timestep,g_index,varsize,varname,vardata)
