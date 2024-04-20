@@ -24,7 +24,7 @@ module grist_lsm_noahmp_init
                                                 initialData_skintemp_at_pc_surface	    , &
                                                 !initialData_ps_at_pc_surface	        , &
                                                 !initialData_seaice_at_pc_surface	    , &
-                                                !initialData_xice_at_pc_surface	        , &
+                                                initialData_xice_at_pc_surface	        , &
                                                 initialData_snow_at_pc_surface	        , &
                                                 initialData_snowh_at_pc_surface	        , &
                                                 initialData_soiltemp_at_pc_soil_level	, &
@@ -118,8 +118,10 @@ module grist_lsm_noahmp_init
             sh2o    =   smois
             !  
             tsk     =   initialData_skintemp_at_pc_surface%f(1:ncol)
-            !xice    =   initialData_xice_at_pc_surface%f(1:ncol)
             xice    =   staticData_sic_at_pc_surface%f(1:ncol)
+#ifdef REG_AMP21
+            xice    =   initialData_xice_at_pc_surface%f(1:ncol)
+#endif
 #ifdef AMIPC_PHYSICS
             where(staticData_landfrac_at_pc_surface%f(1:ncol) .gt. 0.5_r8) xice = 0.
 #endif

@@ -1,36 +1,14 @@
+module grist_hpe_hydro_pgf_mixed
 
-!----------------------------------------------------------------------------
-! Copyright (c), GRIST-Dev
-!
-! Unless noted otherwise source code is licensed under the Apache-2.0 license.
-! Additional copyright and license information can be found in the LICENSE file
-! distributed with this code, or at http://https://github.com/grist-dev
-!
-! Version 1.0
-! Description: Procedures related with hydrostatic equation, pgf, and terms 
-!              contain hpressure like exner, delhp, etc..
-!              They only handle vertical 1D data structure, should not be aware
-!              of the horizontal data structure; except calc_hpe_get_full_mass
-! Revision history:
-!----------------------------------------------------------------------------
-
-  module grist_hpe_hydro_pgf
-
-    use grist_constants,      only: i4, r8, zero, rdry,cp, p00
-    use grist_hpe_constants,  only: p0, nlev, nlevp, eta_face_a, eta_face_b, eta_full_a,eta_full_b
+    use grist_constants,      only: i4, r8, rdry, r4 => ns
+    use grist_hpe_constants,  only: p0, nlev, nlevp
+! data
+    ! use grist_hpe_constants,  only: eta_face_a, eta_face_b, eta_full_a,eta_full_b
+    use grist_dycore_module_vars_control_mixed, only: eta_face_a, eta_face_b, eta_full_a,eta_full_b
 
     implicit none
 
-    private
-
-    public :: calc_hpe_hydro               , &
-              calc_hpe_hpressure_face_level, &
-              calc_hpe_hpressure_full_level, &
-              calc_hpe_delhp               , &
-              calc_hpe_exner               , &
-              calc_hpe_get_full_mass
-
-   contains
+contains
 !
 !  vertical index
 !-(1)--------------------------------- 1/2
@@ -75,9 +53,6 @@
       integer(i4)                          :: ilevel
 
 
-!
-! 3.5 of SS81
-!
       do ilevel = 1, nlev     ! for each face ilevel except surface
          vert_sum = 0._r8        
          do ilev = ilevel, nlev ! for each full level ilev
@@ -159,20 +134,6 @@
       return
     end subroutine calc_hpe_hpressure_full_level
 
-    subroutine calc_hpe_exner(scalar_pressure_full_level,&
-                              scalar_exner_full_level)
-
-      real(r8), dimension(nlev),  intent(in)     :: scalar_pressure_full_level
-      real(r8), dimension(nlev),  intent(inout)  ::    scalar_exner_full_level
-      integer  :: ilev
-
-       do ilev = 1, nlev
-          scalar_exner_full_level(ilev) = (scalar_pressure_full_level(ilev)/p00)**(rdry/cp)
-       end do
-
-       return
-    end subroutine calc_hpe_exner
-
     subroutine calc_hpe_get_full_mass(nlev, ncell, working_mode          , & ! in
                                           scalar_hpressure_at_pc_face_level  , & ! in
                                           scalar_hpressure_at_pc_full_level  , & ! in
@@ -183,12 +144,12 @@
 ! io
      integer(i4)        , intent(in)    ::  nlev, ncell
      character(len=*),    intent(in)    ::  working_mode
-     real(r8),            intent(in)    ::  scalar_hpressure_at_pc_face_level(:,:) 
+     real(r4),            intent(in)    ::  scalar_hpressure_at_pc_face_level(:,:) 
      real(r8),            intent(in)    ::  scalar_hpressure_at_pc_full_level(:,:) 
      real(r8),            intent(in)    ::  scalar_delhp_at_pc_full_level(:,:)
      real(r8),            intent(in)    ::  scalar_mif_at_pc_full_level(:,:)
      real(r8),            intent(out)   ::  scalar_pressure_at_pc_full_level(:,:)
-     real(r8),            intent(out)   ::  scalar_pressure_at_pc_face_level(:,:)
+     real(r4),            intent(out)   ::  scalar_pressure_at_pc_face_level(:,:)
 ! local
      integer(i4)  :: iv, ilev, ilevel
 
@@ -209,11 +170,54 @@
           scalar_pressure_at_pc_face_level(ilev,1:ncell) = scalar_pressure_at_pc_face_level(ilev-1,1:ncell)+&
                                                      scalar_delhp_at_pc_full_level(ilev-1,1:ncell)/scalar_mif_at_pc_full_level(ilev-1,1:ncell)
        end do
-       scalar_pressure_at_pc_full_level(1:nlev,1:ncell)  = 0.5_r8*(scalar_pressure_at_pc_face_level(1:nlev,1:ncell)+scalar_pressure_at_pc_face_level(2:nlev+1,1:ncell))
+       scalar_pressure_at_pc_full_level(1:nlev,1:ncell)  = 0.5_r4*(scalar_pressure_at_pc_face_level(1:nlev,1:ncell)+scalar_pressure_at_pc_face_level(2:nlev+1,1:ncell))
 
      end select
     
      return
    end subroutine calc_hpe_get_full_mass
 
- end module grist_hpe_hydro_pgf
+    subroutine calc_hpe_get_full_mass1(nlev, ncell, working_mode          , & ! in
+                                          scalar_hpressure_at_pc_face_level  , & ! in
+                                          scalar_hpressure_at_pc_full_level  , & ! in
+                                          scalar_delhp_at_pc_full_level      , & ! in
+                                          scalar_mif_at_pc_full_level        , & ! in
+                                          scalar_pressure_at_pc_full_level   , & ! out
+                                          scalar_pressure_at_pc_face_level)      ! out
+! io
+     integer(i4)        , intent(in)    ::  nlev, ncell
+     character(len=*),    intent(in)    ::  working_mode
+     real(r8),            intent(in)    ::  scalar_hpressure_at_pc_face_level(:,:) 
+     real(r8),            intent(in)    ::  scalar_hpressure_at_pc_full_level(:,:) 
+     real(r8),            intent(in)    ::  scalar_delhp_at_pc_full_level(:,:)
+     real(r8),            intent(in)    ::  scalar_mif_at_pc_full_level(:,:)
+     real(r8),            intent(out)   ::  scalar_pressure_at_pc_full_level(:,:)
+     real(r4),            intent(out)   ::  scalar_pressure_at_pc_face_level(:,:)
+! local
+     integer(i4)  :: iv, ilev, ilevel
+
+     select case(trim(working_mode))
+
+     case('dycore') ! for reference
+       scalar_pressure_at_pc_face_level  =  scalar_hpressure_at_pc_face_level
+       scalar_pressure_at_pc_full_level  =  scalar_hpressure_at_pc_full_level
+       return
+     case('tracer') ! for reference
+       return
+     case default ! this should produce very similar  pressure as hpressure in a dry mode;
+                 ! but not bit reproducity due to machine round off;
+                 ! at the first top, assume p=hp
+
+       scalar_pressure_at_pc_face_level(1,1:ncell) = scalar_hpressure_at_pc_face_level(1,1:ncell)
+       do ilev = 2, nlev+1 ! for each full level ilev
+          scalar_pressure_at_pc_face_level(ilev,1:ncell) = scalar_pressure_at_pc_face_level(ilev-1,1:ncell)+&
+                                                     scalar_delhp_at_pc_full_level(ilev-1,1:ncell)/scalar_mif_at_pc_full_level(ilev-1,1:ncell)
+       end do
+       scalar_pressure_at_pc_full_level(1:nlev,1:ncell)  = 0.5_r4*(scalar_pressure_at_pc_face_level(1:nlev,1:ncell)+scalar_pressure_at_pc_face_level(2:nlev+1,1:ncell))
+
+     end select
+    
+     return
+   end subroutine calc_hpe_get_full_mass1
+
+end module grist_hpe_hydro_pgf_mixed

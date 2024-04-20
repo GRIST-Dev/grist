@@ -479,16 +479,6 @@ contains
       ptend_wrf%rqimpten(1:ncell,1:nLevel,1:1) = (pstate_wrf%moist(1:ncell,1:nLevel,1:1,p_qi)-moist_old(1:ncell,1:nLevel,1:1,p_qi))/dtime
       ptend_wrf%rqsmpten(1:ncell,1:nLevel,1:1) = (pstate_wrf%moist(1:ncell,1:nLevel,1:1,p_qs)-moist_old(1:ncell,1:nLevel,1:1,p_qs))/dtime
       ptend_wrf%rqgmpten(1:ncell,1:nLevel,1:1) = (pstate_wrf%moist(1:ncell,1:nLevel,1:1,p_qg)-moist_old(1:ncell,1:nLevel,1:1,p_qg))/dtime
-#ifdef ALLRKP
-! do not modify
-      pstate_wrf%th_phy(1:ncell,1:nLevel,1:1)  =    th_old(1:ncell,1:nLevel,1:1)
-  !    ptend_wrf%rqvmpten(1:ncell,1:nLevel,1:1) = moist_old(1:ncell,1:nLevel,1:1,p_qv)
-  !    ptend_wrf%rqcmpten(1:ncell,1:nLevel,1:1) = moist_old(1:ncell,1:nLevel,1:1,p_qc)
-  !    ptend_wrf%rqrmpten(1:ncell,1:nLevel,1:1) = moist_old(1:ncell,1:nLevel,1:1,p_qr)
-  !    ptend_wrf%rqimpten(1:ncell,1:nLevel,1:1) = moist_old(1:ncell,1:nLevel,1:1,p_qi)
-  !    ptend_wrf%rqsmpten(1:ncell,1:nLevel,1:1) = moist_old(1:ncell,1:nLevel,1:1,p_qs)
-  !    ptend_wrf%rqgmpten(1:ncell,1:nLevel,1:1) = moist_old(1:ncell,1:nLevel,1:1,p_qg)
-#endif
 
       case('YLINV381')
 ! store here for manully diagnosing tendency
@@ -674,16 +664,9 @@ contains
       
       end if
 
-    !if(use_cond)then ! add large-scale condensation preci
-    !   psurf_wrf%rainncv(1:ncell,1) = psurf_wrf%rainncv(1:ncell,1)+precl*1000._r8*dtime ! mm/step
-    !   psurf_wrf%rainnc( 1:ncell,1) = psurf_wrf%rainnc( 1:ncell,1)+psurf_wrf%rainncv(1:ncell,1)
-    !end if
-    
-#ifndef ALLRKP
 ! if os, also update t_phy inside
     pstate_wrf%t_phy (1:ncell,1:nLevel-1,1) = pstate_wrf%th_phy(1:ncell,1:nLevel-1,1)*pstate_wrf%pi_phy(1:ncell,1:nLevel-1,1)
-#endif
-
+    
     return
    end subroutine grist_wrf_microphysics_run
 

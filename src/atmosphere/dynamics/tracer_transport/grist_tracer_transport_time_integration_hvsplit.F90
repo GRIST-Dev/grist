@@ -101,7 +101,7 @@
 ! local
      real(r8), dimension(nlev,mesh%nv_full) :: scalar_qv_at_pc_full_old0
      real(r8), dimension(nlev,mesh%nv_full) :: scalar_qv_at_pc_full_old
-     real(r8), dimension(mesh%nv)           :: scalar_template_a
+     real(r8), dimension(mesh%nv_full)      :: scalar_template_a
 
         field_head_3d=>null()
         iblock = mpi_rank()
@@ -194,13 +194,17 @@
 #ifdef TRACER_VERTNOEXC
 ! This will produce identical solutions as using exchange inside vertical advection
        !    do iv = 1, mesh%nv_full
+            mesh%nv=mesh%nv_full
             call calc_hpe_tend_continuity_2d(mesh%nv_full, nlev, tracerVarCellFull%tend_mass_div_avg_adv%f(1:nlev,1:mesh%nv), &  ! in
+                                             scalar_template_a(1:mesh%nv)      , &  ! out, ps
+                                             tracerVarCellFace%scalar_eta_mass_flux_avg_adv%f(1:nlevp,1:mesh%nv))   ! out
+            mesh%nv=mesh%nv_compute
 #else
        !    do iv = 1, mesh%nv
             call calc_hpe_tend_continuity_2d(mesh%nv, nlev, tracerVarCellFull%tend_mass_div_avg_adv%f(1:nlev,1:mesh%nv), &  ! in
+                                             scalar_template_a(1:mesh%nv)      , &  ! out, ps
+                                             tracerVarCellFace%scalar_eta_mass_flux_avg_adv%f(1:nlevp,1:mesh%nv))   ! out
 #endif
-                                               scalar_template_a(1:mesh%nv)      , &  ! out, ps
-                                               tracerVarCellFace%scalar_eta_mass_flux_avg_adv%f(1:nlevp,1:mesh%nv))   ! out
 
            !end do
            if(iblock .eq. 0.and.write_verbose) print*, "Tracer Transport: finish evaluating vertical mass flux"
@@ -221,6 +225,7 @@
 ! time-split here, prepared for vertical advection
            tracerVarCellFull%scalar_tracer_mass_n   = tracerVarCellFull%scalar_tracer_mass_np1
            tracerVarCellFull%scalar_tracer_mxrt_n   = tracerVarCellFull%scalar_tracer_mxrt_np1
+#ifdef GRIST_TRACER_DEBUG
 ! optional mxrt fix
            if(tracer_mxrt_fixer)then
               call tracer_transport_fixer_mxrt(mesh%nv_full, tracerVarCellFull%scalar_tracer_mxrt_n,tracerVarCellFull%scalar_delhp_end_adv) 
@@ -229,9 +234,9 @@
               end do
            end if
            call tracer_transport_check_mxrt(mesh, tracerVarCellFull%scalar_tracer_mxrt_n," after_tracer_transport_inte_hori")
+#endif
 #ifndef SEQ_GRIST
         call clock_end(clock_tracerh)
-
         call clock_begin(clock_tracerv)
 #endif
 ! V prepared
@@ -244,6 +249,7 @@
            tracerVarCellFull%scalar_tracer_mass_n%f = tracerVarCellFull%scalar_tracer_mass_np1%f
            tracerVarCellFull%scalar_tracer_mxrt_n%f = tracerVarCellFull%scalar_tracer_mxrt_np1%f
 
+#ifdef GRIST_TRACER_DEBUG
 ! optional mxrt fix, default not use
            if(tracer_mxrt_fixer)then
               call tracer_transport_fixer_mxrt(mesh%nv_full, tracerVarCellFull%scalar_tracer_mxrt_n,tracerVarCellFull%scalar_delhp_end_adv)
@@ -252,6 +258,7 @@
               end do
            end if
            call tracer_transport_check_mxrt(mesh, tracerVarCellFull%scalar_tracer_mxrt_n," after_tracer_transport_inte_vert")
+#endif
 #ifndef SEQ_GRIST
         call clock_end(clock_tracerv)
 #endif
@@ -443,7 +450,7 @@ mesh%ne = mesh%ne_halo(1)
 ! DIV operator
 !
 !$omp parallel  private(iv,inb,edge_index,ilev,itracer) 
-!$omp do schedule(dynamic,50) 
+!$omp do schedule(dynamic,50)
            do iv = 1, mesh%nv
               tracerVarCellFull%tend_tracer_mass_hori%f(1:ntracer,1:nlev,iv) = zero
               do inb = 1, mesh%vtx_nnb(iv)
@@ -466,18 +473,22 @@ mesh%ne = mesh%ne_halo(1)
 !
            tracerVarCellFull%scalar_tracer_mass_np1%f = tracerVarCellFull%scalar_tracer_mass_n%f+rk_substep*tracerVarCellFull%tend_tracer_mass_hori%f
 
-           do itracer = 1, ntracer
-              tracerVarCellFull%scalar_tracer_mxrt_np1%f(itracer,1:nlev,1:mesh%nv) = tracerVarCellFull%scalar_tracer_mass_np1%f(itracer,1:nlev,1:mesh%nv)/&
-                                                                                     tracerVarCellFull%scalar_delhp_end_adv%f(1:nlev,1:mesh%nv)
-           end do
 ! 
 ! exchange data
+! Note that: this exchange is only necessary when nrk_hori.gt.1. .and.
+! ns_hori.gt.1 E.g., ffsl and tspas do not need this, when hori adv is not cycled within a full tracer transport step;
+! but still code here for general purpose; one data exchange is acceptable
 !
 #ifndef SEQ_GRIST
            call exchange_data_3d_add(mesh,field_head_3d,tracerVarCellFull%scalar_tracer_mass_np1)
-           call exchange_data_3d_add(mesh,field_head_3d,tracerVarCellFull%scalar_tracer_mxrt_np1)
+           ! no need: call exchange_data_3d_add(mesh,field_head_3d,tracerVarCellFull%scalar_tracer_mxrt_np1)
            call exchange_data_3d(mesh%local_block,field_head_3d)
 #endif
+           do itracer = 1, ntracer
+              tracerVarCellFull%scalar_tracer_mxrt_np1%f(itracer,1:nlev,1:mesh%nv_full) = tracerVarCellFull%scalar_tracer_mass_np1%f(itracer,1:nlev,1:mesh%nv_full)/&
+                                                                                     tracerVarCellFull%scalar_delhp_end_adv%f(1:nlev,1:mesh%nv_full)
+           end do
+
 #ifdef LAM_DOMAIN
            call update_assignValueArea_3d(mesh,nlev,ntracer,"tracer",tracerVarCellFull%scalar_delhp_end_adv%f,&
                                                                      tracerVarCellFull%scalar_tracer_mass_np1,&
@@ -894,6 +905,7 @@ mesh%ne = mesh%ne_halo(1)
 ! END IEVA HERE; if IEVA not called, this routine
 ! must produce identical solutions as before
 !----------------------------------------------------
+
 #ifndef SEQ_GRIST
 #ifndef TRACER_VERTNOEXC
            call exchange_data_3d_add(mesh,field_head_3d,tracerVarCellFull%scalar_tracer_mass_np1)

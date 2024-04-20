@@ -16,7 +16,7 @@
 
     use grist_domain_types, only: global_domain
     use grist_data_types,   only: scalar_2d_field, scalar_3d_field
-    use grist_constants,    only: i4, r8, zero, one, half
+    use grist_constants,    only: i4, r8, zero, one, half, r4=>ns
     use grist_nml_module,   only: nlev, ntracer, write_verbose, physpkg
     use grist_hpe_constants,only: deta_full, deta_face
     use grist_mpi
@@ -54,7 +54,11 @@
 !        do iv = 1, mesh%nv_compute
 !           do itracer = 1, ntracer
 !              do ilev = 1, nlev
+#ifdef MIXCODE
+                 if(scalar_tracer_mxrt_at_pc_full_level_n%f_r4(itracer,ilev,iv).lt.scalar_tracer_mxrt_min(itracer))then
+#else
                  if(scalar_tracer_mxrt_at_pc_full_level_n%f(itracer,ilev,iv).lt.scalar_tracer_mxrt_min(itracer))then
+#endif
                     nsum = nsum + 1
                  end if
 !              end do
@@ -153,7 +157,7 @@
    integer(i4), intent(in)    :: ncell       ! number of atmospheric columns
    integer(i4), intent(in)    :: nlev        ! number of vertical levels in column
    integer(i4), intent(in)    :: ntracer     ! number of vertical levels in column
-   real(r8),    intent(inout) :: qqq(:,:,:)  ! moisture/tracer field
+   real(r4),    intent(inout) :: qqq(:,:,:)  ! moisture/tracer field
    character*(*), intent(in)  :: called_env  ! name of calling routine
 ! local
    integer indx(nlev,ncell) ! array of indices of points < qmin

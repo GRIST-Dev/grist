@@ -34,24 +34,20 @@
 !                   3. DCMIP2016-SC Kessler microphysics following Klemp et al 2015 and DCMIP variants
 !                   4. DCMIP2016-TC Simple Physics of RJ2012, JAMES
 !                   Above are simple physics, below are full physics
-!                   6. AMIPC_PHYSICS Physics, PhysPkg based on CAM5
-!                   7. AMIPW_PHYSICS, from WRF
+!                   6. AMIPC_PHYSICS, PhysPkg based on CAM5
+!                   7. AMIPW_PHYSICS, PhysPkg from WRF
 !
 ! Revision history:
-!
-!       1. Still exploring whether F1 is necessary inside dycore because RK
-!          already does most jobs; F2 is used most often in a time-split manner.
-!          F2 can be used with fast-physics when in a slow-fast seperate mode
-!
-!       2. Now the tendency evaluation and state coupling have been seperated to allow 
-!          larger flexiblity
 !
 !----------------------------------------------------------------------------
 
  module grist_dtp_coupling_module
 
    use grist_constants,                  only: r8, i4, pi, zero, one
-   use grist_nml_module,                 only: ptend_f2_on, TC_pbl_flag, nh_dynamics
+#ifdef MIXCODE
+   use grist_constants,                  only: zero_r4=>zero_ns
+#endif
+   use grist_nml_module,                 only: ptend_f2_on, TC_pbl_flag, nh_dynamics, doNotDiagnose
    use grist_domain_types,               only: global_domain
    use grist_data_types,                 only: exchange_field_list_2d, exchange_field_list_3d
 ! data module, used vars should be explicitly stated here to avoid any potential conflication
@@ -75,6 +71,11 @@
                                                exchange_data_3d_add, &
                                                exchange_data_2d,     &
                                                exchange_data_3d
+#ifdef MIXCODE
+   use grist_config_partition,           only: exchange_data_2d_r4,     &
+                                               exchange_data_3d_r4
+
+#endif
 #endif
    use grist_lib
 ! model physics interface; simple physics below
@@ -179,14 +180,17 @@
 
       case('DCMIP2016-TC')
 
+#ifdef MIXCODE
+        dycoreVarCellFace%scalar_mpressure_n%f   = dycoreVarCellFace%scalar_mpressure_n%f_r4
+        tracerVarCellFull%scalar_tracer_mxrt_n%f = tracerVarCellFull%scalar_tracer_mxrt_n%f_r4
+#endif
          call grist_dtp_interface_dcmip2016_tc_a(mesh, nlev, mesh%nv_halo(1), dtime                 , &
-                                                 dycoreVarCellFull%scalar_mpressure_n%f              , &
-                                                 dycoreVarCellFace%scalar_mpressure_n%f              , &
-                                                 !dycoreVarCellFull%scalar_delhp_n%f                 , &
-                                                 dycoreVarEdgeFull%scalar_normal_velocity_n%f      , &
-                                                 dycoreVarCellFull%scalar_potential_temp_n%f         , & !thetam
-                                                 dycoreVarCellFull%scalar_temp_n%f                   , &
-                                                 tracerVarCellFull%scalar_tracer_mxrt_n%f            , &
+                                                 dycoreVarCellFull%scalar_mpressure_n%f             , &
+                                                 dycoreVarCellFace%scalar_mpressure_n%f             , &
+                                                 dycoreVarEdgeFull%scalar_normal_velocity_n%f       , &
+                                                 dycoreVarCellFull%scalar_potential_temp_n%f        , & !thetam
+                                                 dycoreVarCellFull%scalar_temp_n%f                  , &
+                                                 tracerVarCellFull%scalar_tracer_mxrt_n%f           , &
                                                  0, TC_pbl_flag                                     , &
                                                  ptend_f2%tend_normal_velocity_at_edge_full_level%f , &
                                                  ptend_f2%tend_potential_temp_at_pc_full_level%f    , &
@@ -207,6 +211,10 @@
 
       case('DCMIP2016-BW-RJ')
 
+#ifdef MIXCODE
+        dycoreVarCellFace%scalar_mpressure_n%f   = dycoreVarCellFace%scalar_mpressure_n%f_r4
+        tracerVarCellFull%scalar_tracer_mxrt_n%f = tracerVarCellFull%scalar_tracer_mxrt_n%f_r4
+#endif
          call grist_dtp_interface_dcmip2016_tc_a(mesh, nlev, mesh%nv_halo(1), dtime                 , &
                                                  dycoreVarCellFull%scalar_mpressure_n%f              , &
                                                  dycoreVarCellFace%scalar_mpressure_n%f              , &
@@ -257,13 +265,16 @@
 
       case('DCMIP2016-SC','DCMIP2016-BW-SC')
 
+#ifdef MIXCODE
+        tracerVarCellFull%scalar_tracer_mxrt_n%f = tracerVarCellFull%scalar_tracer_mxrt_n%f_r4
+#endif
         call grist_dtp_interface_dcmip2016_sc_a(mesh, nlev, mesh%nv_halo(1), dtime           , &
-                                             dycoreVarCellFull%scalar_mpressure_n%f           , &
-                                             dycoreVarCellFace%scalar_geopotential_n%f        , &
-                                             dycoreVarCellFull%scalar_geopotential_n%f        , &
-                                             dycoreVarCellFull%scalar_delhp_n%f               , &
-                                             dycoreVarCellFull%scalar_potential_temp_n%f      , & !thetam
-                                             tracerVarCellFull%scalar_tracer_mxrt_n%f         , &
+                                             dycoreVarCellFull%scalar_mpressure_n%f          , &
+                                             dycoreVarCellFace%scalar_geopotential_n%f       , &
+                                             dycoreVarCellFull%scalar_geopotential_n%f       , &
+                                             dycoreVarCellFull%scalar_delhp_n%f              , &
+                                             dycoreVarCellFull%scalar_potential_temp_n%f     , & !thetam
+                                             tracerVarCellFull%scalar_tracer_mxrt_n%f        , &
                                              ptend_f2%tend_potential_temp_at_pc_full_level%f , &
                                              ptend_f2%tend_tracer_mxrt_at_pc_full_level%f    , &
                                              pstate%scalar_precl_surface%f)
@@ -272,7 +283,7 @@
                                                     dycoreVarCellFull%scalar_delhp_n%f
         do itracer = 1, ntracer
              ptend_f2%tend_tracer_mass_at_pc_full_level%f(itracer,:,:) = ptend_f2%tend_tracer_mxrt_at_pc_full_level%f(itracer,:,:)*&
-                                                     tracerVarCellFull%scalar_delhp_end_adv%f
+                                                     dycoreVarCellFull%scalar_delhp_n%f
         end do
         ptend_f2%tend_normal_velocity_at_edge_full_level%f   = zero
         ptend_f2%tend_www_at_pc_face_level%f                 = zero
@@ -341,8 +352,13 @@
 
 #ifdef AMIPW_PHYSICS
       case('AMIPW_PHYSICS')
-
-        call grist_full_physpkg2_wrf2_run(mesh, ntracer, nmif, nlev, mesh%nv_halo(1), istep, dtime , &
+#ifdef MIXCODE
+        tracerVarCellFull%tend_qv_n%f            = tracerVarCellFull%tend_qv_n%f_r4
+      !   dycoreVarCellFull%scalar_mpressure_n%f   = dycoreVarCellFull%scalar_mpressure_n%f_r4
+        dycoreVarCellFace%scalar_mpressure_n%f   = dycoreVarCellFace%scalar_mpressure_n%f_r4
+        tracerVarCellFull%scalar_tracer_mxrt_n%f = tracerVarCellFull%scalar_tracer_mxrt_n%f_r4
+#endif
+        call grist_full_physpkg2_wrf2_run(mesh, ntracer, nmif, nlev, mesh%nv_halo(1), istep, dtime  , &
                                                 tracerVarCellFull%scalar_mif_n%f                    , &
                                                 dycoreVarCellFull%tend_pt_n%f                       , &
                                                 tracerVarCellFull%tend_qv_n%f                       , &
@@ -350,12 +366,12 @@
                                                 dycoreVarCellFace%scalar_geopotential_n%f           , &
                                                 dycoreVarCellFull%scalar_mpressure_n%f              , &
                                                 dycoreVarCellFace%scalar_mpressure_n%f              , &
-                                                dycoreVarEdgeFull%scalar_normal_velocity_n%f      , &
+                                                dycoreVarEdgeFull%scalar_normal_velocity_n%f        , &
                                                 dycoreVarCellFull%scalar_potential_temp_n%f         , & ! ptm
                                                 dycoreVarCellFull%scalar_temp_n%f                   , &
                                                 tracerVarCellFull%scalar_tracer_mxrt_n%f            , &
                                                 dycoreVarCellFace%scalar_www_timavg%f               , &
-                                                dycoreVarCellFull%scalar_omega_timavg%f          , &
+                                                dycoreVarCellFull%scalar_omega_timavg%f             , &
                                                 dycoreVarCellFull%scalar_delhp_n%f                  )
 !
 ! obtain tendency for compound variables
@@ -441,9 +457,29 @@
 ! diagnose raw-var for next-step dycore & tracer evaluation
 !
          dycoreVarCellFull%scalar_potential_temp_n%f    = dycoreVarCellFull%scalar_mass_pt_n%f/dycoreVarCellFull%scalar_delhp_n%f
+#ifdef MIXCODE
+         tracerVarCellFull%scalar_tracer_mass_n%f_r4       = tracerVarCellFull%scalar_tracer_mass_n%f_r4+&
+                                                         dtime*ptend_f2%tend_tracer_mass_at_pc_full_level%f
+#ifndef SEQ_GRIST
+#ifdef MIXCODE
+         call exchange_data_3d_add(mesh,field_head_3d,tracerVarCellFull%scalar_tracer_mass_n,"r4")
+         call exchange_data_3d_r4(mesh%local_block,field_head_3d)
+#else
+         call exchange_data_3d_add(mesh,field_head_3d,tracerVarCellFull%scalar_tracer_mass_n)
+         call exchange_data_3d(mesh%local_block,field_head_3d)
+#endif
+#endif
+         do itracer = 1, ntracer
+            tracerVarCellFull%scalar_tracer_mxrt_n%f_r4(itracer,:,:)  = tracerVarCellFull%scalar_tracer_mass_n%f_r4(itracer,:,:)/&
+                                                                    dycoreVarCellFull%scalar_delhp_n%f
+         end do
 !
-! tracer
-!
+        call tracer_transport_qneg3_mxrt(mesh%nv_full, nlev, ntracer,tracerVarCellFull%scalar_tracer_mxrt_n%f_r4,"after physics coupling in driver_coup")
+        call tracer_transport_check_mxrt(mesh,tracerVarCellFull%scalar_tracer_mxrt_n,"after physics coupling in driver_coup")
+        do itracer = 1, ntracer
+           tracerVarCellFull%scalar_tracer_mass_n%f_r4(itracer,:,:) = tracerVarCellFull%scalar_tracer_mxrt_n%f_r4(itracer,:,:)*tracerVarCellFull%scalar_delhp_end_adv%f_r4
+        end do
+#else
          tracerVarCellFull%scalar_tracer_mass_n%f       = tracerVarCellFull%scalar_tracer_mass_n%f+&
                                                          dtime*ptend_f2%tend_tracer_mass_at_pc_full_level%f
 #ifndef SEQ_GRIST
@@ -460,6 +496,7 @@
         do itracer = 1, ntracer
            tracerVarCellFull%scalar_tracer_mass_n%f(itracer,:,:) = tracerVarCellFull%scalar_tracer_mxrt_n%f(itracer,:,:)*tracerVarCellFull%scalar_delhp_end_adv%f
         end do
+#endif
 
       case('DCMIP2016-BW-TMT')
 
@@ -484,7 +521,26 @@
         call exchange_data_2d(mesh%local_block,field_head_2d)
 #endif
         dycoreVarCellFull%scalar_potential_temp_n%f = dycoreVarCellFull%scalar_mass_pt_n%f/dycoreVarCellFull%scalar_delhp_n%f
+
 ! [2] tracer mass
+#IFDEF MIXCODE
+        tracerVarCellFull%scalar_tracer_mass_n%f_r4 = tracerVarCellFull%scalar_tracer_mass_n%f_r4+dtime*ptend_f2%tend_tracer_mass_at_pc_full_level%f
+#ifndef SEQ_GRIST
+        call exchange_data_3d_add(mesh,field_head_3d,tracerVarCellFull%scalar_tracer_mass_n,"r4")
+        call exchange_data_3d_r4(mesh%local_block,field_head_3d)
+#endif
+        do itracer = 1, ntracer
+           tracerVarCellFull%scalar_tracer_mxrt_n%f_r4(itracer,:,:) = tracerVarCellFull%scalar_tracer_mass_n%f_r4(itracer,:,:)/tracerVarCellFull%scalar_delhp_end_adv%f_r4
+        end do
+!
+! do this for all halo regions so as to permit overlapping
+!
+        call tracer_transport_qneg3_mxrt(mesh%nv_full, nlev, ntracer,tracerVarCellFull%scalar_tracer_mxrt_n%f_r4,"after physics coupling in driver_coup")
+        call tracer_transport_check_mxrt(mesh,tracerVarCellFull%scalar_tracer_mxrt_n,"after physics coupling in driver_coup")
+        do itracer = 1, ntracer
+           tracerVarCellFull%scalar_tracer_mass_n%f_r4(itracer,:,:) = tracerVarCellFull%scalar_tracer_mxrt_n%f_r4(itracer,:,:)*tracerVarCellFull%scalar_delhp_end_adv%f_r4
+        end do
+#ELSE
         tracerVarCellFull%scalar_tracer_mass_n%f    = tracerVarCellFull%scalar_tracer_mass_n%f+dtime*ptend_f2%tend_tracer_mass_at_pc_full_level%f
 #ifndef SEQ_GRIST
         call exchange_data_3d_add(mesh,field_head_3d,tracerVarCellFull%scalar_tracer_mass_n)
@@ -501,6 +557,7 @@
         do itracer = 1, ntracer
            tracerVarCellFull%scalar_tracer_mass_n%f(itracer,:,:) = tracerVarCellFull%scalar_tracer_mxrt_n%f(itracer,:,:)*tracerVarCellFull%scalar_delhp_end_adv%f
         end do
+#ENDIF
 
       case('none')
           return
@@ -531,16 +588,26 @@
       field_head_2d=>null()
 ! 1) set to zero if first step
       if(idstep.eq.1)then
-         tracerVarEdgeFull%scalar_normal_velocity_avg_adv%f  = zero
-         tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f = zero
-         tracerVarCellFull%scalar_delhp_avg_adv%f              = zero
+#ifdef MIXCODE
+         tracerVarEdgeFull%scalar_normal_velocity_avg_adv%f_r4  = zero_r4
+         tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f    = zero_r4
+#else
+         tracerVarEdgeFull%scalar_normal_velocity_avg_adv%f     = zero
+         tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f    = zero
+#endif
+         tracerVarCellFull%scalar_delhp_avg_adv%f               = zero
       end if
 
 ! 2) do some accumulation
       do ie = 1, mesh%ne ! compute
          do ilev = 1, nlev
+#ifdef MIXCODE
+             tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f(ilev,ie) = tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f(ilev,ie)+&
+                                                                dycoreVarEdgeFull%scalar_normal_mass_flux_n%f_r4(ilev,ie)
+#else
              tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f(ilev,ie) = tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f(ilev,ie)+&
                                                                 dycoreVarEdgeFull%scalar_normal_mass_flux_n%f(ilev,ie)
+#endif
          end do
       end do
 
@@ -553,9 +620,15 @@
 
 ! 3) average at the final step
       IF(idstep.eq.dstep_in_tstep)then
-         tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f = tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f/dstep_in_tstep
+#ifdef MIXCODE
+         tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f   = tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f/dstep_in_tstep
+         tracerVarCellFull%scalar_delhp_avg_adv%f              = tracerVarCellFull%scalar_delhp_avg_adv%f/dstep_in_tstep
+         tracerVarCellFull%scalar_delhp_end_adv%f_r4           = dycoreVarCellFull%scalar_delhp_n%f
+#else
+         tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f   = tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f/dstep_in_tstep
          tracerVarCellFull%scalar_delhp_avg_adv%f              = tracerVarCellFull%scalar_delhp_avg_adv%f/dstep_in_tstep
          tracerVarCellFull%scalar_delhp_end_adv%f              = dycoreVarCellFull%scalar_delhp_n%f
+#endif
 
          do ie = 1, mesh%ne
             icell1 = mesh%edt_v(1,ie)
@@ -563,14 +636,26 @@
             do ilev = 1, nlev
                tmp    = (tracerVarCellFull%scalar_delhp_avg_adv%f(ilev,icell1)+&
                          tracerVarCellFull%scalar_delhp_avg_adv%f(ilev,icell2))*half
+#ifdef MIXCODE
+               tracerVarEdgeFull%scalar_normal_velocity_avg_adv%f_r4(ilev,ie) = tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f(ilev,ie)/tmp
+#else
                tracerVarEdgeFull%scalar_normal_velocity_avg_adv%f(ilev,ie) = tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f(ilev,ie)/tmp
+#endif
             end do
          end do
 #ifndef SEQ_GRIST
 ! exchange data, tuned balance ok
+#ifdef MIXCODE
+        call exchange_data_2d_add(mesh,field_head_2d,tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv)
+        call exchange_data_2d(mesh%local_block,field_head_2d)
+        call exchange_data_2d_add(mesh,field_head_2d,tracerVarEdgeFull%scalar_normal_velocity_avg_adv ,"r4")
+        call exchange_data_2d_r4(mesh%local_block,field_head_2d)
+#else
         call exchange_data_2d_add(mesh,field_head_2d,tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv)
         call exchange_data_2d_add(mesh,field_head_2d,tracerVarEdgeFull%scalar_normal_velocity_avg_adv)
         call exchange_data_2d(mesh%local_block,field_head_2d)
+#endif
+
 #endif
 
       END IF
@@ -603,14 +688,14 @@
       do iv = 1, mesh%nv ! compute
          do ilev = 1, nlev
              dycoreVarCellFull%scalar_omega_timavg%f(ilev,iv) = dycoreVarCellFull%scalar_omega_timavg%f(ilev,iv)+&
-                                                               dycoreVarCellFull%scalar_omega_n%f(ilev,iv)
+                                                                dycoreVarCellFull%scalar_omega_n%f(ilev,iv)
          end do
       end do
       if(nh_dynamics)then
          do iv = 1, mesh%nv_full ! compute
             do ilev = 1, nlevp
                dycoreVarCellFace%scalar_www_timavg%f(ilev,iv) = dycoreVarCellFace%scalar_www_timavg%f(ilev,iv)+&
-                                                               dycoreVarCellFace%scalar_www_n%f(ilev,iv)
+                                                                dycoreVarCellFace%scalar_www_n%f(ilev,iv)
             end do
          end do
       end if 

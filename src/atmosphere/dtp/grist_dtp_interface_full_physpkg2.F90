@@ -599,13 +599,6 @@ end if
       if(nh_dynamics.or.ptendSubDiabPhys)then ! f2's ptm tend also has moisture contribution
 ! add pt's f2 tendency to rk, and f2 will be substracted
          ptend_rk%tend_potential_temp_at_pc_full_level%f = ptend_rk%tend_potential_temp_at_pc_full_level%f+ptend_f2%tend_potential_temp_at_pc_full_level%f
-#ifdef ALLRKP
-         if(.not.ptendSubDiabPhys)then
-          ! for ndc, if not subdiagphys, means all ptm tend in rk, so f2's ptm
-          ! must be zero, not even include qv contribution
-          ptend_f2%tend_potential_temp_at_pc_full_level%f = zero
-         end if
-#endif
       end if
 
     return

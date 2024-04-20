@@ -236,26 +236,6 @@ module grist_domain_types
      integer(i4), allocatable :: t(:)
   end type output_structure
 
-  !**************************************************************************************
-  !  Envisaged parallel data structure for par_grist
-  !  block contains the domain-decomposed mesh info from the global mesh elements
-  !  The metis-decomposed domain based on v's index is called compute domain,
-  !  bdy1 and bdy2 are the most and second outside bdys of this compute domain,
-  !  halo means the needed cells from this domain's nb domain,
-  !  halo1 and halo2 are the most and second outside halos of THIS compute domain;
-  !  sequence: /1st out halo->2nd out halo->1st out bdy->2nd out bdy/
-  !  because halo contains cells from different nb domain, we need the block id
-  !  of cells in this halo, then This block's
-  !  bdy1 send info to one of its nb domain's halo2,
-  !  bdy2 send info to one of its nb domain's halo1;
-  !  This block's
-  !  halo1 receives info from one of its nb domain's bdy2
-  !  halo2 receives info from one of its nb domain's bdy1
-  !  Such MPI behavior should be done independent of operators and time integration
-  !  i.e., when we call the operators, the procedure should mimic the sequecial code
-  !  as close as possible
-  !**************************************************************************************
-
   type block_structure
 
      !> communicator

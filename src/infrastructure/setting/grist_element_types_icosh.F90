@@ -235,7 +235,7 @@
      real(r8)                 :: areag       ! area of spherical polygon, saved by gg
      integer(i4), allocatable :: tg(:)       ! a binary indicator, 1 if the direction of tangen vector CCW to cell; -1 else; no-longer saved by gg
      integer(i4), allocatable :: nr(:)       ! a binary indicator, 1 if the direction of normal vector points out of cell; -1 else; no-longer saved by gg
-! trsk weight for vector reconstructure (cf., Thuburn et al. 2009)
+! trsk weight for vector reconstructure (Thuburn et al. 2009)
      real(r8), allocatable    :: trsk_weight(:,:)
 ! Dual-Primal cell intersection area, belonged by polygon
      real (r8), allocatable   :: kite_area(:)

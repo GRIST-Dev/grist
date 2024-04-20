@@ -21,7 +21,7 @@
   module grist_tracer_transport_vars_module
 
     use grist_domain_types, only: global_domain
-    use grist_data_types,   only: scalar_2d_field, scalar_3d_field
+    use grist_data_types,   only: scalar_1d_field, scalar_2d_field, scalar_3d_field
     use grist_constants,    only: i4, r8, zero, one, half, eps
     use grist_nml_module,   only: nlev, ntracer, nmif, mif_index, working_mode, isolate_tracer_test
     use grist_hpe_constants,only: deta_full, deta_face
@@ -75,9 +75,16 @@
                                                             ! interpolated from tracerVarCellFull%scalar_mif_n
     END TYPE TRACER_VAR_CELL_FACE
 
+    TYPE TRACER_VAR_SURFACE
+
+    type(scalar_1d_field)   :: tend_hpressure
+
+    END TYPE TRACER_VAR_SURFACE
+
     type(TRACER_VAR_CELL_FULL) :: tracerVarCellFull
     type(TRACER_VAR_CELL_FACE) :: tracerVarCellFace
     type(TRACER_VAR_EDGE_FULL) :: tracerVarEdgeFull
+    type(TRACER_VAR_SURFACE)   :: tracerVarSurface
 
   CONTAINS
 
@@ -152,6 +159,37 @@
          scalar_tracer_mxrt_min = zero
       end if
 
+      allocate(tracerVarSurface%tend_hpressure%f    (mesh%nv))
+      tracerVarSurface%tend_hpressure%f     = zero
+#ifdef MIXCODE
+! MIXCODE
+      allocate(tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f_r4(nlev,mesh%ne))
+      allocate(tracerVarEdgeFull%scalar_normal_velocity_avg_adv%f_r4(nlev,mesh%ne))
+      tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f_r4 = zero
+      tracerVarEdgeFull%scalar_normal_velocity_avg_adv%f_r4  = zero
+      ! MIXCODE
+      allocate(tracerVarCellFull%tend_mass_div_avg_adv%f_r4(nlev,mesh%nv))
+      allocate(tracerVarCellFull%scalar_tracer_mxrt_n%f_r4(  ntracer,nlev,mesh%nv))
+      allocate(tracerVarCellFull%scalar_tracer_mxrt_np1%f_r4(ntracer,nlev,mesh%nv))
+      allocate(tracerVarCellFull%scalar_tracer_mass_n%f_r4(  ntracer,nlev,mesh%nv))
+      allocate(tracerVarCellFull%scalar_tracer_mass_np1%f_r4(ntracer,nlev,mesh%nv))
+      allocate(tracerVarCellFull%tend_tracer_mass_hori%f_r4( ntracer,nlev,mesh%nv))
+      allocate(tracerVarCellFull%tend_tracer_mass_vert%f_r4( ntracer,nlev,mesh%nv))
+      allocate(tracerVarCellFull%tend_qv_n%f_r4(nlev,mesh%nv))
+      tracerVarCellFull%tend_mass_div_avg_adv%pos     = 0
+      tracerVarCellFull%scalar_tracer_mxrt_n%f_r4     = zero
+      tracerVarCellFull%scalar_tracer_mxrt_np1%f_r4   = zero
+      tracerVarCellFull%scalar_tracer_mass_n%f_r4     = zero
+      tracerVarCellFull%scalar_tracer_mass_np1%f_r4   = zero
+      tracerVarCellFull%tend_tracer_mass_hori%f_r4    = zero
+      tracerVarCellFull%tend_tracer_mass_vert%f_r4    = zero
+      tracerVarCellFull%tend_qv_n%f_r4                = zero
+      ! MIXCODE
+      allocate(tracerVarCellFace%scalar_eta_mass_flux_avg_adv%f_r4(nlev+1,mesh%nv))
+      allocate(tracerVarCellFace%scalar_mif_n%f_r4(nlev+1,mesh%nv))
+      tracerVarCellFace%scalar_eta_mass_flux_avg_adv%f_r4   = zero
+#endif
+
       return
     end subroutine tracer_transport_vars_construct
 
@@ -185,6 +223,21 @@
       deallocate(tracerVarCellFace%scalar_eta_mass_flux_avg_adv%f)
       deallocate(tracerVarCellFace%scalar_mif_n%f)
 
+      deallocate(tracerVarSurface%tend_hpressure%f)
+#ifdef MIXCODE
+      if(allocated(tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f_r4)) deallocate(tracerVarEdgeFull%scalar_normal_mass_flux_avg_adv%f_r4)
+      if(allocated(tracerVarEdgeFull%scalar_normal_velocity_avg_adv%f_r4))  deallocate(tracerVarEdgeFull%scalar_normal_velocity_avg_adv%f_r4)
+      if(allocated(tracerVarCellFull%tend_mass_div_avg_adv%f_r4))           deallocate(tracerVarCellFull%tend_mass_div_avg_adv%f_r4)
+      if(allocated(tracerVarCellFull%scalar_tracer_mxrt_n%f_r4))            deallocate(tracerVarCellFull%scalar_tracer_mxrt_n%f_r4)
+      if(allocated(tracerVarCellFull%scalar_tracer_mxrt_np1%f_r4))          deallocate(tracerVarCellFull%scalar_tracer_mxrt_np1%f_r4)
+      if(allocated(tracerVarCellFull%scalar_tracer_mass_n%f_r4))            deallocate(tracerVarCellFull%scalar_tracer_mass_n%f_r4)
+      if(allocated(tracerVarCellFull%scalar_tracer_mass_np1%f_r4))          deallocate(tracerVarCellFull%scalar_tracer_mass_np1%f_r4)
+      if(allocated(tracerVarCellFull%tend_tracer_mass_hori%f_r4))           deallocate(tracerVarCellFull%tend_tracer_mass_hori%f_r4)
+      if(allocated(tracerVarCellFull%tend_tracer_mass_vert%f_r4))           deallocate(tracerVarCellFull%tend_tracer_mass_vert%f_r4)
+      if(allocated(tracerVarCellFace%scalar_eta_mass_flux_avg_adv%f_r4))    deallocate(tracerVarCellFace%scalar_eta_mass_flux_avg_adv%f_r4)
+      if(allocated(tracerVarCellFace%scalar_mif_n%f_r4))                    deallocate(tracerVarCellFace%scalar_mif_n%f_r4)
+#endif
+
       return
      end subroutine tracer_transport_vars_destruct
 
@@ -209,7 +262,11 @@
 ! evaluate forcing at cell, which persists across dycore steps
        do iv = 1, mesh%nv_full
           do ilev = 1, nlev
+#ifdef MIXCODE
+             tracerVarCellFull%scalar_mif_n%f(ilev,iv) = one/(one+sum(tracerVarCellFull%scalar_tracer_mxrt_n%f_r4(mif_index(1:nmif),ilev,iv)))
+#else
              tracerVarCellFull%scalar_mif_n%f(ilev,iv) = one/(one+sum(tracerVarCellFull%scalar_tracer_mxrt_n%f(mif_index(1:nmif),ilev,iv)))
+#endif
           end do
        end do
 
@@ -225,8 +282,14 @@
              tracerVarEdgeFull%scalar_mif_n%f(ilev,ie) = half*(tracerVarCellFull%scalar_mif_n%f(ilev,icell1)+&
                                                                tracerVarCellFull%scalar_mif_n%f(ilev,icell2))
 #else
+
+#ifdef MIXCODE
+             tmp  = half*(sum(tracerVarCellFull%scalar_tracer_mxrt_n%f_r4(mif_index(1:nmif),ilev,icell1))+&
+                          sum(tracerVarCellFull%scalar_tracer_mxrt_n%f_r4(mif_index(1:nmif),ilev,icell2)))
+#else
              tmp  = half*(sum(tracerVarCellFull%scalar_tracer_mxrt_n%f(mif_index(1:nmif),ilev,icell1))+&
                           sum(tracerVarCellFull%scalar_tracer_mxrt_n%f(mif_index(1:nmif),ilev,icell2)))
+#endif
              tracerVarEdgeFull%scalar_mif_n%f(ilev,ie) = one/(one+tmp)
 
 #endif
@@ -244,8 +307,13 @@
 #else
        do iv = 1, mesh%nv_full
        do ilev = 2, nlev
+#ifdef MIXCODE
+               tmp = 0.5*(deta_full(ilev-1)/deta_face(ilev)*sum(tracerVarCellFull%scalar_tracer_mxrt_n%f_r4(mif_index(1:nmif),ilev,iv))+&
+                          deta_full(ilev)  /deta_face(ilev)*sum(tracerVarCellFull%scalar_tracer_mxrt_n%f_r4(mif_index(1:nmif),ilev-1,iv)))
+#else
                tmp = 0.5*(deta_full(ilev-1)/deta_face(ilev)*sum(tracerVarCellFull%scalar_tracer_mxrt_n%f(mif_index(1:nmif),ilev,iv))+&
                           deta_full(ilev)  /deta_face(ilev)*sum(tracerVarCellFull%scalar_tracer_mxrt_n%f(mif_index(1:nmif),ilev-1,iv)))
+#endif
                tracerVarCellFace%scalar_mif_n%f(ilev,iv) = one/(one+tmp)
        end do
        end do

@@ -45,10 +45,6 @@
          type(scalar_2d_field) :: tri_cc_ltln   ! lat and lon of cc,           nt*2
          type(scalar_2d_field) :: tri_nb        ! edge-neighboring tr of this tr,   nt*nDual
          type(scalar_2d_field) :: tri_ed        ! generating edge of tr,            nt*nDual
-!#ifndef MESHOPT
-!         type(scalar_2d_field) :: tri_nr        ! tr's nr correction for each edge, nt*nDual
-!         type(scalar_2d_field) :: tri_tg        ! tr's tg correction for each edge, nt*nDual
-!#endif
          type(scalar_2d_field) :: tri_area      ! area geodesic,               nt*1
 #ifdef CUBE
          type(scalar_2d_field) :: tri_nnb       !                                   nt*1
@@ -87,12 +83,6 @@
          type(scalar_2d_field) :: vtx_tr        ! neighboring tr,                   nv*maxvnb
          type(scalar_2d_field) :: vtx_tr_local  ! neighboring tr,                   nv*maxvnb
 
-         !type(scalar_2d_field) :: plg_bc_p      ! barycenter's p,                   nv*3
-         !type(scalar_2d_field) :: plg_bc_ltln   ! barycenter's lat&lon,             nv*2
-!#ifndef MESHOPT
-!         type(scalar_2d_field) :: plg_tg        ! tg correction,                    nv*maxvnb
-!         type(scalar_2d_field) :: plg_nr        ! nr correction,                    nv*maxvnb
-!#endif
          type(scalar_2d_field) :: plg_area      ! area geodesic                     nv*1
 
    contains
@@ -150,10 +140,6 @@
      allocate(tri_cc_ltln%f(mesh%nt,2))
      allocate(     tri_nb%f(mesh%nt,nDual))
      allocate(     tri_ed%f(mesh%nt,nDual))
-!#ifndef MESHOPT
-!     allocate(     tri_nr%f(mesh%nt,nDual))
-!     allocate(     tri_tg%f(mesh%nt,nDual))
-!#endif
      allocate(   tri_area%f(mesh%nt,1))
 
      tri_v%pos        = 1
@@ -161,10 +147,6 @@
      tri_cc_ltln%pos  = 1
      tri_nb%pos       = 1
      tri_ed%pos       = 1
-!#ifndef MESHOPT
-!     tri_nr%pos       = 1
-!     tri_tg%pos       = 1
-!#endif
      tri_area%pos     = 1
 
      do it = 1, mesh%nt
@@ -175,10 +157,6 @@
         tri_cc_ltln%f(it,2) = mesh%tri(it)%c%lon
         tri_nb%f(it,1:nDual)= mesh%tri(it)%nb(1:nDual)
         tri_ed%f(it,1:nDual)= mesh%tri(it)%ed(1:nDual)
-!#ifndef MESHOPT
-!        tri_nr%f(it,1:nDual)= mesh%tri(it)%nr(1:nDual)
-!        tri_tg%f(it,1:nDual)= mesh%tri(it)%tg(1:nDual)
-!#endif
         tri_area%f(it,1)    = mesh%tri(it)%areag
 
      end do
@@ -223,7 +201,6 @@
         edt_nr%f(ie,1:3)     = mesh%edt(ie)%nr(1:3)
         edt_tg%f(ie,1:3)     = mesh%edt(ie)%tg(1:3)
         edt_v%f(ie,1:2)      = mesh%edt(ie)%v(1:2)
-       ! edt_len%f(ie,1)      = mesh%edt(ie)%lenp
         edt_len%f(ie,1)      = mesh%edt(ie)%leng
 
         edp_cc_p%f(ie,1:3)   = mesh%edp(ie)%c%p(1:3)
@@ -232,7 +209,6 @@
         edp_nr%f(ie,1:3)     = mesh%edp(ie)%nr(1:3)
         edp_tg%f(ie,1:3)     = mesh%edp(ie)%tg(1:3)
         edp_v%f(ie,1:2)      = mesh%edp(ie)%v(1:2)
-        !edp_len%f(ie,1)      = mesh%edp(ie)%lenp
         edp_len%f(ie,1)      = mesh%edp(ie)%leng
 
      end do
@@ -247,12 +223,6 @@
      allocate(      vtx_ed%f(mesh%nv,mesh_maxvnb)) 
      allocate(      vtx_tr%f(mesh%nv,mesh_maxvnb)) 
           
-     !allocate(   plg_bc_p%f(mesh%nv,3)) 
-     !allocate(plg_bc_ltln%f(mesh%nv,2))
-!#ifndef MESHOPT
-!     allocate(     plg_tg%f(mesh%nv,mesh_maxvnb))
-!     allocate(     plg_nr%f(mesh%nv,mesh_maxvnb))
-!#endif
      allocate(plg_area%f(mesh%nv,1))
 
      vtx_p%pos           = 0
@@ -261,12 +231,6 @@
      vtx_ed%pos          = 0
      vtx_tr%pos          = 0
 
-     !plg_bc_p%pos        = 0
-     !plg_bc_ltln%pos     = 0
-!#ifndef MESHOPT
-!     plg_tg%pos          = 0
-!     plg_nr%pos          = 0
-!#endif
      plg_area%pos        = 0
 
      do iv = 1, mesh%nv
@@ -279,23 +243,12 @@
         vtx_ed%f(iv,  1:mesh%vtx(iv)%nnb)    = mesh%vtx(iv)%ed(:)
         vtx_tr%f(iv,  1:mesh%vtx(iv)%nnb)    = mesh%vtx(iv)%tr(:)
 
-        !plg_bc_p%f(iv,1:3)                   = mesh%plg(iv)%b%p(1:3)
-        !plg_bc_ltln%f(iv,1)                  = mesh%plg(iv)%b%lat
-        !plg_bc_ltln%f(iv,2)                  = mesh%plg(iv)%b%lon
-!#ifndef MESHOPT
-!        plg_tg%f(iv,  1:mesh%vtx(iv)%nnb)    = mesh%plg(iv)%tg(:)
-!        plg_nr%f(iv,  1:mesh%vtx(iv)%nnb)    = mesh%plg(iv)%nr(:)
-!#endif
         plg_area%f(iv,1)                     = mesh%plg(iv)%areag
 
         if(mesh%vtx(iv)%nnb.eq.5.and.mesh%glevel.gt.0)then
            vtx_nb%f(iv,6)  = -1e6_r8
            vtx_ed%f(iv,6)  = -1e6_r8
            vtx_tr%f(iv,6)  = -1e6_r8
-!#ifndef MESHOPT
-!           plg_tg%f(iv,6)  = -1e6_r8
-!           plg_nr%f(iv,6)  = -1e6_r8
-!#endif
         end if
 
      end do
@@ -310,31 +263,21 @@
 !   Triangle point
 !--------------------------
 
-!     allocate(     tri_v%f(mesh_nt,3))
      allocate(tri_v_local%f(max_cache,nDual))
      allocate(   tri_cc_p%f(max_cache,3))
      allocate(tri_cc_ltln%f(max_cache,2))
      allocate(     tri_nb%f(max_cache,nDual))
      allocate(     tri_ed%f(max_cache,nDual))
-!#ifndef MESHOPT
-!     allocate(     tri_nr%f(max_cache,nDual))
-!     allocate(     tri_tg%f(max_cache,nDual))
-!#endif
      allocate(   tri_area%f(max_cache,1))
 #ifdef CUBE
      allocate(    tri_nnb%f(max_cache,1))
 #endif
 
-!    tri_v%pos        = 1
      tri_v_local%pos  = 1
      tri_cc_p%pos     = 1
      tri_cc_ltln%pos  = 1
      tri_nb%pos       = 1
      tri_ed%pos       = 1
-!#ifndef MESHOPT
-!     tri_nr%pos       = 1
-!     tri_tg%pos       = 1
-!#endif
      tri_area%pos     = 1
 #ifdef CUBE
      tri_nnb%pos      = 1
@@ -354,7 +297,6 @@
      allocate(edt_cc_ltln%f(max_cache,2))
      allocate(     edt_nr%f(max_cache,3))
      allocate(     edt_tg%f(max_cache,3))
-!     allocate(      edt_v%f(mesh_ne,2))
      allocate(edt_v_local%f(max_cache,2))  !repeat to global,so named edt_v_local
      allocate(    edt_len%f(max_cache,1))
 
@@ -369,7 +311,6 @@
      edt_cc_ltln%pos  = 6
      edt_nr%pos       = 6
      edt_tg%pos       = 6
-!     edt_v%pos        = 6
      edt_v_local%pos  = 6
      edt_len%pos      = 6
 
@@ -395,17 +336,6 @@
      allocate(      vtx_nb_local%f(max_cache,mesh_maxvnb))
      allocate(      vtx_ed_local%f(max_cache,mesh_maxvnb))
      allocate(      vtx_tr_local%f(max_cache,mesh_maxvnb))
-!     allocate(vtx_ltln_nnb%f(mesh_nv,3))
-!     allocate(      vtx_nb%f(mesh_nv,mesh_maxvnb))
-!     allocate(      vtx_ed%f(mesh_nv,mesh_maxvnb))
-!     allocate(      vtx_tr%f(mesh_nv,mesh_maxvnb))
-          
-     !allocate(   plg_bc_p%f(max_cache,3))
-     !allocate(plg_bc_ltln%f(max_cache,2))
-!#ifndef MESHOPT
-!     allocate(     plg_tg%f(max_cache,mesh_maxvnb))
-!     allocate(     plg_nr%f(max_cache,mesh_maxvnb))
-!#endif
      allocate(   plg_area%f(max_cache,1))
 
      vtx_p%pos           = 0
@@ -413,17 +343,6 @@
      vtx_nb_local%pos    = 0
      vtx_ed_local%pos    = 0
      vtx_tr_local%pos    = 0
-!     vtx_ltln_nnb%pos   = 0
-!     vtx_nb%pos         = 0
-!     vtx_ed%pos         = 0
-!     vtx_tr%pos         = 0
-
-     !plg_bc_p%pos        = 0
-     !plg_bc_ltln%pos     = 0
-!#ifndef MESHOPT
-!     plg_tg%pos          = 0
-!     plg_nr%pos          = 0
-!#endif
      plg_area%pos        = 0
 
      return
@@ -435,92 +354,23 @@
 !   Triangle point
 !--------------------------
 
-!     allocate(   tri_cc_p%f(mesh_nt,3))
-!     allocate(tri_cc_ltln%f(mesh_nt,2))
-
      allocate(      tri_v%f(mesh_nt,3))
-!     allocate(     tri_ed%f(mesh_nt,3))
-!     allocate(     tri_nb%f(mesh_nt,3))
-
-!     allocate(     tri_tg%f(mesh_nt,3))
-!     allocate(     tri_nr%f(mesh_nt,3))
-!     allocate(   tri_area%f(mesh_nt,2))
-
-!     tri_cc_p%pos     = 1
-!     tri_cc_ltln%pos  = 1
-
-!     tri_v%pos        = 1
-!     tri_ed%pos       = 1
-!     tri_nb%pos       = 1
-
-!     tri_tg%pos       = 1
-!     tri_nr%pos       = 1
-!     tri_area%pos     = 1
 
 !--------------------------
 !   Edge point
 !--------------------------
 
- !    allocate(   edt_cc_p%f(mesh_ne,3))
- !    allocate(edt_cc_ltln%f(mesh_ne,2))
      allocate(      edt_v%f(mesh_ne,2))
- !    allocate(     edt_tg%f(mesh_ne,3))
- !    allocate(     edt_nr%f(mesh_ne,3))
- !    allocate(    edt_len%f(mesh_ne,2))
-
- !    allocate(   edp_cc_p%f(mesh_ne,3))
- !    allocate(edp_cc_ltln%f(mesh_ne,2))
- !    allocate(      edp_v%f(mesh_ne,2))
- !    allocate(     edp_tg%f(mesh_ne,3))
- !    allocate(     edp_nr%f(mesh_ne,3))
- !    allocate(    edp_len%f(mesh_ne,2))
-
- !    edt_cc_p%pos     = 2
- !    edt_cc_ltln%pos  = 2
- !    edt_v%pos        = 2
- !    edt_tg%pos       = 2
- !    edt_nr%pos       = 2
- !    edt_len%pos      = 2
-
- !    edp_cc_p%pos     = 2
- !    edp_cc_ltln%pos  = 2
- !    edp_v%pos        = 2
- !    edp_tg%pos       = 2
- !    edp_nr%pos       = 2
- !    edp_len%pos      = 2
 
 !--------------------------
 !  Vertex/Hexagon point
 !--------------------------
 
-!     allocate(       vtx_p%f(mesh_nv,3))
      allocate(vtx_ltln_nnb%f(mesh_nv,3))
      allocate(      vtx_nb%f(mesh_nv,mesh_maxvnb))
-!     allocate(     vtx_nbd%f(mesh_nv,mesh_maxvnb))
-!     allocate(    vtx_nbdg%f(mesh_nv,mesh_maxvnb))
      allocate(      vtx_ed%f(mesh_nv,mesh_maxvnb))
      allocate(      vtx_tr%f(mesh_nv,mesh_maxvnb))
           
-!     allocate(   plg_bc_p%f(mesh_nv,3))
-!     allocate(plg_bc_ltln%f(mesh_nv,2))
-!     allocate(     plg_tg%f(mesh_nv,mesh_maxvnb))
-!     allocate(     plg_nr%f(mesh_nv,mesh_maxvnb))
-!     allocate(   plg_area%f(mesh_nv,2))
-
-!     vtx_p%pos           = 0
-!     vtx_ltln_nnb%pos    = 0
-!     vtx_nb%pos          = 0
-!     vtx_nbd%pos         = 0
-!     vtx_nbdg%pos        = 0
-!     vtx_ed%pos          = 0
-!     vtx_tr%pos          = 0
-
-!     plg_bc_p%pos        = 0
-!     plg_bc_ltln%pos     = 0
-!     plg_tg%pos          = 0
-!     plg_nr%pos          = 0
-!     plg_area%pos        = 0 
-
      return
    end subroutine construct_grid_vars_for_read
 
@@ -535,10 +385,6 @@
      deallocate(tri_cc_ltln%f)
      deallocate(     tri_nb%f)
      deallocate(     tri_ed%f)
-!#ifndef MESHOPT
-!     deallocate(     tri_nr%f)
-!     deallocate(     tri_tg%f)
-!#endif
      deallocate(   tri_area%f)
 #ifdef CUBE
      deallocate(   tri_nnb%f)
@@ -580,12 +426,6 @@
      deallocate(      vtx_ed_local%f)
      deallocate(      vtx_tr_local%f)
           
-     !deallocate(   plg_bc_p%f)
-     !deallocate(plg_bc_ltln%f)
-!#ifndef MESHOPT
-!     deallocate(     plg_tg%f)
-!     deallocate(     plg_nr%f)
-!#endif
      deallocate(   plg_area%f)
 
    end subroutine destruct_grid_file_vars_v
@@ -601,10 +441,6 @@
      deallocate(tri_cc_ltln%f)
      deallocate(     tri_nb%f)
      deallocate(     tri_ed%f)
-!#ifndef MESHOPT
-!     deallocate(     tri_nr%f)
-!     deallocate(     tri_tg%f)
-!#endif
      deallocate(   tri_area%f)
 
 !--------------------------
@@ -635,14 +471,6 @@
      deallocate(      vtx_ed%f)
      deallocate(      vtx_tr%f)
           
-     !deallocate(   plg_bc_p%f)
-     !deallocate(plg_bc_ltln%f)
-!#ifndef MESHOPT
-!     deallocate(     plg_tg%f)
-!     deallocate(     plg_nr%f)
-!#endif
      deallocate(   plg_area%f)
-
    end subroutine destruct_grid_file_vars
-
  end module grist_grid_file_vars

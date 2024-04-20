@@ -21,6 +21,7 @@
  PROGRAM GRIST_atmos
 
 ! infrastructure
+   use omp_lib
    use grist_constants, only: r8
    use grist_lib
    use grist_mpi
@@ -43,8 +44,10 @@
                                    fill_key_compute_pattern2
 ! gcm model instance
    use grist_gcm_control_driver,        only: grist_gcm_init, grist_gcm_run, grist_gcm_final
+#ifdef MISC
    use grist_gcm_dycore_control_driver, only: grist_gcm_dycore_init, grist_gcm_dycore_run, grist_gcm_dycore_final
    use grist_gcm_tracer_control_driver, only: grist_gcm_tracer_init, grist_gcm_tracer_run, grist_gcm_tracer_final
+#endif
    use grist_config_partition
   use grist_datam_initial_data_module,  only: grist_initial_data_destruct
 ! timing
@@ -85,20 +88,28 @@
      call destruct_global_mesh_var(mesh)
      local_block%full_domain%local_block => local_block
      if(mpi_rank() == 0) print *,"config_sub_domain end"
+
+#ifdef USE_OMP
+      if(mpi_rank().eq.0) print*, "thread number is:", omp_get_num_procs()
+#endif
+
 !
 ! init mesh weight
 !
      call grist_all_mesh_weight_init(local_block)
+     if(mpi_rank() == 0) print *,"grist_all_mesh_weight_init"
 !
 ! init model instance here
 !
      select case(trim(model_instance))
      case('gcm')
         call grist_gcm_init(local_block)
+#ifdef MISC
      case('dycore')
         call grist_gcm_dycore_init(local_block)
      case('tracer')
         call grist_gcm_tracer_init(local_block)
+#endif
      case default
         call grist_gcm_init(local_block)
      end select
@@ -134,10 +145,12 @@
      select case(trim(model_instance))
      case('gcm')
         call grist_gcm_run(local_block%full_domain)
+#ifdef MISC
      case('dycore')   ! this should produce exactly the same results as called in gcm's dycore working_mode
         call grist_gcm_dycore_run(local_block%full_domain)
      case('tracer')   ! this should produce exactly the same results as called in gcm's tracer working_mode
         call grist_gcm_tracer_run(local_block%full_domain)
+#endif
      case default
         call grist_gcm_run(local_block%full_domain)
      end select
@@ -150,10 +163,12 @@
      select case(trim(model_instance))
      case('gcm')
         call grist_gcm_final(local_block%full_domain)
+#ifdef MISC
      case('dycore')
         call grist_gcm_dycore_final(local_block%full_domain)
      case('tracer')
         call grist_gcm_tracer_final(local_block%full_domain)
+#endif
      case default
         call grist_gcm_final(local_block%full_domain)
      end select

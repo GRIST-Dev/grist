@@ -1,11 +1,7 @@
 
 !----------------------------------------------------------------------------
-! Copyright (c), GRIST-Dev
-!
-! Unless noted otherwise source code is licensed under the Apache-2.0 license.
-! Additional copyright and license information can be found in the LICENSE file
-! distributed with this code, or at http://https://github.com/grist-dev
-!
+! Created on 2018
+! Author: Yi Zhang
 ! Version 1.0
 ! Description: The model's explicit diffusion module
 ! Revision history:
@@ -29,9 +25,9 @@
 !              SPLIKE K2 coef
 !----------------------------------------------------------------------------
 
- module grist_dycore_diffusion_module
+ module grist_dycore_diffusion_module_mixed
 
-  use grist_constants,        only: i4, r8, rearth, zero, one
+  use grist_constants,        only: i4, r8, rearth, zero, r4 => ns
   use grist_domain_types,     only: global_domain
 #ifndef SEQ_GRIST
   use grist_data_types,       only: scalar_2d_field, exchange_field_list_2d
@@ -40,10 +36,10 @@
 #endif
   use grist_math_module,      only: convert_vector_cart2sph, cross_product, norm, &
                                     extrapolate_bdy
-  use grist_nml_module,       only: nlev, nlevp, nsponge, spcoef, smg_coef, ref_leng, ko4_coef, ko6_coef, do_div2d_o4_damping, div2d_o4_damping_coef, &
+  use grist_nml_module,       only: nlev, nlevp, nsponge, spcoef, smg_coef, ref_leng, ko4_coef, ko6_coef, &
                                     do_dycore_laplacian_2nd, do_dycore_laplacian_4th, do_dycore_laplacian_6th, use_laplacian_vi, &
                                     www_k2coef_type, nh_dynamics
-  use grist_nml_module,       only: dtime=>model_timestep, vr_mode,use_www_hyperDiffusion
+  use grist_nml_module,       only: dtime=>model_timestep, vr_mode, use_www_hyperDiffusion
   use grist_mesh_weight_icosh,only: project_sphere2tplane
   use grist_hpe_constants,    only: deta_full, deta_face, eta_full, eta_face
 #ifndef SEQ_GRIST
@@ -104,7 +100,6 @@
      type(exchange_field_list_2d),pointer :: field_head_2d
 #endif
      real(r8)        :: www_k2coef(nexpdif_level+1,mesh%ne_halo(1))
-     real(r8)        :: div2d_o4_damping_tendency(nlev,mesh%ne_halo(2))
      integer(i4)     :: ie
 
 #ifndef SEQ_GRIST
@@ -120,17 +115,18 @@
 ! coef and vector Laplacian
        call calc_smg_eddy_coef(mesh,dycoreVarEdgeFull%scalar_normal_velocity_n%f)
 ! un
-       call calc_hrwind_laplacian_2nd_full(mesh,dycoreVarEdgeFull%scalar_normal_velocity_n%f,&
-                                                dycoreVarEdgeFull%tend_hwind_laplacian_2nd%f,&
+       call calc_hrwind_laplacian_2nd_full_1(mesh,dycoreVarEdgeFull%scalar_normal_velocity_n%f,&
+                                                dycoreVarEdgeFull%tend_hwind_laplacian_2nd%f_r4,&
                                                 nexpdif_level)
 ! pt
-       call calc_scalar_laplacian_2nd_FullFace(mesh,scalar_smg_eddy_coef_at_edge_full_level      ,&
+       call calc_scalar_laplacian_2nd_FullFace(mesh,dycoreVarEdgeFull%scalar_normal_velocity_n%f,&
+                                                    scalar_smg_eddy_coef_at_edge_full_level      ,&
                                                     dycoreVarCellFull%scalar_potential_temp_n%f   ,&
                                                     dycoreVarCellFull%tend_mass_pt_laplacian_2nd%f,&
                                                     nexpdif_level)
 
        dycoreVarCellFull%tend_mass_pt_laplacian_2nd%f = dycoreVarCellFull%tend_mass_pt_laplacian_2nd%f*&
-                                                        dycoreVarCellFull%scalar_delhp_n%f
+                                                     dycoreVarCellFull%scalar_delhp_n%f
 !
 ! www diffusion, we may control the diffusion coef here
 !
@@ -145,25 +141,25 @@
            www_k2coef(1:nexpdif_level+1,1:mesh%ne_halo(1)) = scalar_smg_eddy_coef_at_edge_face_level(1:nexpdif_level+1,1:mesh%ne_halo(1))
        end select
 
-       call calc_scalar_laplacian_2nd_FullFace(mesh,www_k2coef                                  ,&
-                                                    dycoreVarCellFace%scalar_www_n%f            ,&
-                                                    dycoreVarCellFace%tend_www_laplacian_2nd%f  ,&
+       call calc_scalar_laplacian_2nd_FullFace_1(mesh,dycoreVarEdgeFull%scalar_normal_velocity_n%f,&
+                                                    www_k2coef                                   ,&
+                                                    dycoreVarCellFace%scalar_www_n%f              ,&
+                                                    dycoreVarCellFace%tend_www_laplacian_2nd%f_r4    ,&
                                                     nexpdif_level+1)
        end if
 
        if(do_dycore_laplacian_4th)then
 ! only un is diffused using 4th if needed
-          call calc_hrwind_laplacian_4th_full(mesh,2, ko4_coef, real(mesh%edt_scale_4th,r8), .true.,& 
+          call calc_hrwind_laplacian_4th_full_1(mesh,2, ko4_coef, real(mesh%edt_scale_4th,r8), .true.,& 
                                                    scalar_hwind_laplace_at_edge_full_level,&
-                                                   dycoreVarEdgeFull%tend_hwind_laplacian_4th%f)
+                                                   dycoreVarEdgeFull%tend_hwind_laplacian_4th%f_r4)
 
 ! the VI version now support VR at 20210612, needs test
-          if(use_laplacian_vi) call calc_hrwind_laplacian_4th_full_vi(mesh,2, ko4_coef, real(mesh%edt_scale_4th,r8), .true.,&
-                                                   scalar_hwind_laplace_at_edge_full_level,&
-                                                   dycoreVarEdgeFull%tend_hwind_laplacian_4th%f)
+         !  if(use_laplacian_vi) call calc_hrwind_laplacian_4th_full_vi(mesh,2, ko4_coef, real(mesh%edt_scale_4th,r8), .true.,&
+         !                                           scalar_hwind_laplace_at_edge_full_level,&
+         !                                           dycoreVarEdgeFull%tend_hwind_laplacian_4th%f)
 !
 ! 20210827, add Laplacian 4th for phi, with sign "minus"
-! 20220923, change Laplacian4th for www instead of phi
 !
           if(nh_dynamics.and.use_www_hyperDiffusion)then
              call calc_scalar_laplacian_4th_face(mesh, dycoreVarCellFace%scalar_www_n%f          , &
@@ -173,20 +169,7 @@
 
        end if
 
-! if use div2d damping, add its tendency into laplacian_4th, so that only needs to compute it until ne_compute,
-! and can share MPI pattern of hori_diffusion 4th
-
-       if(do_div2d_o4_damping)then
-          call calc_hori_div2d_o4_damping(mesh, nlev, div2d_o4_damping_coef, &
-                                          dycoreVarEdgeFull%scalar_normal_velocity_n%f, &
-                                          div2d_o4_damping_tendency)
-
-          dycoreVarEdgeFull%tend_hwind_laplacian_4th%f(1:nlev,1:mesh%ne_compute) = dycoreVarEdgeFull%tend_hwind_laplacian_4th%f(1:nlev,1:mesh%ne_compute)+&
-                                         div2d_o4_damping_tendency(1:nlev,1:mesh%ne_compute)
-       end if
-
        if(do_dycore_laplacian_6th)then
-!LAM does not support 6th even for testing purpose!
 #ifndef SEQ_GRIST
 ! exchange data, because the computation of 4th ends at ne_compute/ne
           call exchange_data_2d_add(mesh,field_head_2d,scalar_hwind_laplace4th_at_edge_full_level)
@@ -214,7 +197,7 @@
 
 ! tracer
        call calc_scalar3d_laplacian_2nd_full(mesh,dycoreVarEdgeFull%scalar_normal_velocity_n%f,&
-                                                  tracerVarCellFull%scalar_tracer_mxrt_n%f      ,&
+                                                  tracerVarCellFull%scalar_tracer_mxrt_n%f_r4      ,&
                                                   tracerVarCellFull%tend_tracer_mass_laplacian_2nd%f,&
                                                   nexpdif_level,ntracer)
        do itracer = 1, ntracer
@@ -287,7 +270,7 @@
            v1      = mesh%edt_v(1,ie)
            v2      = mesh%edt_v(2,ie)
            v1v2    = mesh%vtx_p(1:3,v2)-mesh%vtx_p(1:3,v1)
-           flag    = sign(one,dot_product(v1v2,real(mesh%edp_nr(1:3,ie),r8)))
+           flag    = sign(1._r8,dot_product(v1v2,real(mesh%edp_nr(1:3,ie),r8)))
            do ilev = 1, nLevel
               gradient_at_prime_edge(ilev,ie) = flag*(scalar_at_pc_face_level(ilev,v2)-scalar_at_pc_face_level(ilev,v1))/(rearth*mesh%edt_leng(ie))
            end do
@@ -320,7 +303,7 @@
            v1      = mesh%edt_v(1,ie)
            v2      = mesh%edt_v(2,ie)
            v1v2    = mesh%vtx_p(1:3,v2)-mesh%vtx_p(1:3,v1)
-           flag    = sign(one,dot_product(v1v2,real(mesh%edp_nr(1:3,ie),r8)))
+           flag    = sign(1._r8,dot_product(v1v2,real(mesh%edp_nr(1:3,ie),r8)))
            do ilev = 1, nLevel
               gradient_at_prime_edge(ilev,ie) = flag*(tend_laplacian_4th_at_pc_face_level(ilev,v2)-tend_laplacian_4th_at_pc_face_level(ilev,v1))/(rearth*mesh%edt_leng(ie))
            end do
@@ -341,7 +324,7 @@
                  div_sum  = div_sum+gradient_at_prime_edge(ilev,ie)*mesh%plg_nr(inb,iv)*rearth*mesh%edp_leng(ie)
               end do
 ! multiplied coef here with scaling factor
-              tend_laplacian_4th_at_pc_face_level(ilev,iv) = -ko4_coef*div_sum/((rearth**2)*mesh%plg_areag(iv))*(mesh%vtxCellLeng(iv)/(ref_leng/rearth))**expp 
+              tend_laplacian_4th_at_pc_face_level(ilev,iv) = -div_sum/((rearth**2)*mesh%plg_areag(iv))*(mesh%vtxCellLeng(iv)/(ref_leng/rearth))**expp 
            end do
         end do
    
@@ -356,7 +339,7 @@
                  div_sum  = div_sum+gradient_at_prime_edge(ilev,ie)*mesh%plg_nr(inb,iv)*rearth*mesh%edp_leng(ie)
               end do
 ! multiplied coef here with scaling factor
-              tend_laplacian_4th_at_pc_face_level(ilev,iv) = -ko4_coef*div_sum/((rearth**2)*mesh%plg_areag(iv))
+              tend_laplacian_4th_at_pc_face_level(ilev,iv) = -div_sum/((rearth**2)*mesh%plg_areag(iv))
            end do
         end do
 
@@ -472,12 +455,14 @@
 ! but only for SMG-style 2nd Laplacian diffusion because smg-coef is inserted
 !
 
-    subroutine calc_scalar_laplacian_2nd_FullFace(mesh,scalar_smg_eddy_coef_at_edge  , &
+    subroutine calc_scalar_laplacian_2nd_FullFace(mesh,scalar_normal_velocity_at_edge, &
+                                                       scalar_smg_eddy_coef_at_edge  , &
                                                        scalar_at_pc                  , &
                                                        tend_laplacian_2nd_at_pc      , &
                                                        nLevel)
 ! io
       type(global_domain),   intent(in)    :: mesh
+      real(r8), allocatable, intent(in)    :: scalar_normal_velocity_at_edge(:,:)
       real(r8),              intent(in)    :: scalar_smg_eddy_coef_at_edge(1:nLevel,1:mesh%ne_halo(1))
       real(r8), allocatable, intent(in)    :: scalar_at_pc(:,:)
       real(r8), allocatable, intent(inout) :: tend_laplacian_2nd_at_pc(:,:)
@@ -519,6 +504,55 @@
         return
     end subroutine calc_scalar_laplacian_2nd_FullFace
 
+    subroutine calc_scalar_laplacian_2nd_FullFace_1(mesh,scalar_normal_velocity_at_edge, &
+                                                         scalar_smg_eddy_coef_at_edge  , &
+                                                         scalar_at_pc                  , &
+                                                         tend_laplacian_2nd_at_pc      , &
+                                                         nLevel)
+! io
+      type(global_domain),   intent(in)    :: mesh
+      real(r8), allocatable, intent(in)    :: scalar_normal_velocity_at_edge(:,:)
+      real(r8),              intent(in)    :: scalar_smg_eddy_coef_at_edge(1:nLevel,1:mesh%ne_halo(1))
+      real(r8), allocatable, intent(in)    :: scalar_at_pc(:,:)
+      real(r4), allocatable, intent(inout) :: tend_laplacian_2nd_at_pc(:,:)
+      integer(i4)          , intent(in)    :: nLevel
+! local
+      real(r8)               :: gradient_at_prime_edge(nLevel,mesh%ne_halo(1))
+      integer(i4)            :: ie, iv, inb,ilev, v1, v2
+      real(r8)               :: v1v2(3), flag, div_sum
+
+!
+! gradient at edge, counter edge's normal direction
+!
+        do ie = 1, mesh%ne_halo(1)     ! global index
+           v1      = mesh%edt_v(1,ie)
+           v2      = mesh%edt_v(2,ie)
+           v1v2    = mesh%vtx_p(1:3,v2)-mesh%vtx_p(1:3,v1)
+           flag    = sign(1._r8,dot_product(v1v2,real(mesh%edp_nr(1:3,ie),r8)))
+           do ilev = 1, nLevel
+              gradient_at_prime_edge(ilev,ie) = flag*(scalar_at_pc(ilev,v2)-scalar_at_pc(ilev,v1))/(rearth*mesh%edt_leng(ie))
+              gradient_at_prime_edge(ilev,ie) = scalar_smg_eddy_coef_at_edge(ilev,ie)*gradient_at_prime_edge(ilev,ie)
+           end do
+        end do
+!
+! divergence at cell
+!
+        do iv = 1, mesh%nv_halo(1)
+           tend_laplacian_2nd_at_pc(:,iv) = zero ! default zero
+           do ilev = 1, nLevel
+              div_sum = zero
+              do inb = 1, mesh%vtx_nnb(iv)
+                 ie  = mesh%vtx_ed(inb,iv)
+                 !div_sum  = div_sum+gradient_at_prime_edge(ilev,ie)*mesh%plg(iv)%nr(inb)*rearth*mesh%edp(ie)%leng
+                 div_sum  = div_sum+gradient_at_prime_edge(ilev,ie)*mesh%plg_nr(inb,iv)*rearth*mesh%edp_leng(ie)
+              end do
+              tend_laplacian_2nd_at_pc(ilev,iv) = div_sum/((rearth**2)*mesh%plg_areag(iv))
+           end do
+        end do
+
+        return
+    end subroutine calc_scalar_laplacian_2nd_FullFace_1
+
     subroutine calc_scalar3d_laplacian_2nd_full(mesh,scalar_normal_velocity_at_edge_full_level, &
                                                      scalar_at_pc_full_level                  , &
                                                      tend_laplacian_2nd_at_pc_full_level      , &
@@ -526,7 +560,7 @@
 ! io
       type(global_domain),   intent(in)    :: mesh
       real(r8), allocatable, intent(in)    :: scalar_normal_velocity_at_edge_full_level(:,:)
-      real(r8), allocatable, intent(in)    :: scalar_at_pc_full_level(:,:,:)
+      real(r4), allocatable, intent(in)    :: scalar_at_pc_full_level(:,:,:)
       real(r8), allocatable, intent(inout) :: tend_laplacian_2nd_at_pc_full_level(:,:,:)
       integer(i4)          , intent(in)    :: nexpdif
       integer(i4)          , intent(in)    :: ntracer
@@ -596,7 +630,7 @@
              tend_laplacian_2nd_at_pc_full_level(ilev,ie) = 4._r8*scalar_smg_eddy_coef_at_edge_full_level(ilev,ie)*&
                                                                   scalar_hwind_laplace_at_edge_full_level(ilev,ie)
 #ifdef DCMIP_SUPERCELL
-             tend_laplacian_2nd_at_pc_full_level(ilev,ie) = 4._r8*500._r8*&
+             tend_laplacian_2nd_at_pc_full_level(ilev,ie) = 4._r4*500._r4*&
                                                                   scalar_hwind_laplace_at_edge_full_level(ilev,ie)
 #endif
          end do
@@ -620,6 +654,51 @@
       return
     end subroutine calc_hrwind_laplacian_2nd_full
 
+    subroutine calc_hrwind_laplacian_2nd_full_1(mesh,scalar_normal_velocity_at_edge_full_level, &
+                                                   tend_laplacian_2nd_at_pc_full_level, &
+                                                   nexpdif)
+! io
+      type(global_domain),   intent(inout) :: mesh
+      real(r8), allocatable, intent(in)    :: scalar_normal_velocity_at_edge_full_level(:,:)
+      real(r4), allocatable, intent(inout) :: tend_laplacian_2nd_at_pc_full_level(:,:)
+      integer(i4)          , intent(in)    :: nexpdif
+! local
+      integer(i4)            :: ie, ilev,cell1, cell2
+!
+! if use laplacian vi, will overwrite that from smg_coef
+!
+      if(use_laplacian_vi) call calc_hrwind_laplacian_2nd_full_vi(mesh,scalar_normal_velocity_at_edge_full_level)
+  
+      do ie = 1, mesh%ne_compute
+         tend_laplacian_2nd_at_pc_full_level(:,ie) = 0._r4  ! default zero
+         do ilev = 1, nexpdif
+             tend_laplacian_2nd_at_pc_full_level(ilev,ie) = 4._r4*scalar_smg_eddy_coef_at_edge_full_level(ilev,ie)*&
+                                                                  scalar_hwind_laplace_at_edge_full_level(ilev,ie)
+#ifdef DCMIP_SUPERCELL
+              tend_laplacian_2nd_at_pc_full_level(ilev,ie) = 4._r4*500._r4*&
+                                                                   scalar_hwind_laplace_at_edge_full_level(ilev,ie)
+#endif
+         end do
+      end do
+!
+! add top-nsponge layer with real 2nd diffusion
+!
+      if(nsponge.gt.0)then ! default should be 5
+        do ie = 1, mesh%ne_compute
+           cell1 = mesh%edt_v(1,ie)
+           cell2 = mesh%edt_v(2,ie)
+! from top to bottom
+           do ilev = 1, nsponge
+               tend_laplacian_2nd_at_pc_full_level(ilev,ie) = tend_laplacian_2nd_at_pc_full_level(ilev,ie)+ &
+                                            4._r8*scalar_hwind_laplace_at_edge_full_level(ilev,ie)*&
+                                       0.5_r8*(mesh%vtxCellLeng(cell1)+mesh%vtxCellLeng(cell2))*rearth*(7-ilev)*spcoef/6._r8
+           end do
+        end do
+      end if
+
+      return
+    end subroutine calc_hrwind_laplacian_2nd_full_1
+
     subroutine grist_diffusion_destruct
 
         if(allocated(perot_weight_at_pc))                           deallocate(perot_weight_at_pc)
@@ -630,9 +709,7 @@
         if(allocated(scalar_hwind_laplace4th_at_edge_full_level%f)) deallocate(scalar_hwind_laplace4th_at_edge_full_level%f)
 
     end subroutine grist_diffusion_destruct
-!
-! This routine also compute grad2 of normal velocity because of efficiency to do them all
-!
+
     subroutine calc_smg_eddy_coef(mesh, &
                                   scalar_normal_velocity_at_edge_full_level)
 ! io
@@ -748,7 +825,7 @@
             !----------------------------------------------------------------------------------------------------------
 
 #ifdef DCMIP_SUPERCELL
-            scalar_smg_eddy_coef_at_edge_full_level(ilev,ie) = 1500._r8
+            scalar_smg_eddy_coef_at_edge_full_level(ilev,ie) = 1500._r4
 #endif
      ! second-order laplacian of normal wind, because we should use 1/2(edt&edp's length) for double center differences but not,
      ! so this laplacian needs a *4 when using outside, for laplacian vi, we also normalize it like this;
@@ -781,7 +858,7 @@
          scalar_smg_eddy_coef_at_edge_face_level(nlevp,ie) = 2.*scalar_smg_eddy_coef_at_edge_full_level(nlev,ie)-scalar_smg_eddy_coef_at_edge_face_level(nlev,ie)
 !#endif
 #ifdef DCMIP_SUPERCELL
-         scalar_smg_eddy_coef_at_edge_face_level(:,:) = 500._r8
+         scalar_smg_eddy_coef_at_edge_face_level(:,:) = 500._r4
 #endif
 
        END DO
@@ -887,70 +964,94 @@
 
     end subroutine calc_hrwind_laplacian_4th_full
 
-    subroutine calc_hori_div2d_o4_damping(mesh, nlev, coef, &
-                                          scalar_normal_velocity_at_edge_full_level, &
-                                          div_damping_4th_tendency)
+    subroutine calc_hrwind_laplacian_4th_full_1(mesh, order, coef, scaling_factor, flag, &
+                                              scalar_hwind_lap2nd_at_edge_full_level, &
+                                              scalar_hwind_lap4th_at_edge_full_level)
 ! io
      type(global_domain),   intent(in)    :: mesh
-     integer(i4),           intent(in)    :: nlev
+     integer(i4),           intent(in)    :: order
      real(r8),              intent(in)    :: coef
-     real(r8), allocatable, intent(in)    :: scalar_normal_velocity_at_edge_full_level(:,:)
-     real(r8), intent(inout) :: div_damping_4th_tendency(nlev,mesh%ne_halo(2))
-! local     
-     real(r8)                             :: div_sum(nlev)
-     real(r8)                             :: v1v2(3), flag
-     integer(i4)                          :: iv, ilev, inb, index_edge, ie
-     real(r8)                             :: div_like_tendency(nlev,mesh%nv_halo(2))
-     real(r8)                             :: grad_of_div(nlev,mesh%ne_halo(1))
+     real(r8),              intent(in)    :: scaling_factor(:)
+     logical ,              intent(in)    :: flag
+     real(r8), allocatable, intent(in)    :: scalar_hwind_lap2nd_at_edge_full_level(:,:)
+     real(r4), allocatable, intent(inout) :: scalar_hwind_lap4th_at_edge_full_level(:,:)
+! local
+     real(r8), allocatable             :: velocity_vector_at_pc_full_level(:,:,:)
+     real(r8), allocatable             :: velocity_vector_at_dc_full_level(:,:,:)
+     integer(i4)                       :: iv, it, ie, ilev, inb
+     integer(i4)                       :: pc1, pc2, dc1, dc2              ! cell index
+     real(r8)                          :: un_pc1, un_pc2, un_dc1, un_dc2  ! normal wind follow edp's nr
+     real(r8)                          :: ut_pc1, ut_pc2, ut_dc1, ut_dc2  ! tangent wind follow edp's tg
+!
+! calculate Laplacian vector at primal and dual cells
+!        
+      if(.not.allocated(velocity_vector_at_pc_full_level)) allocate(velocity_vector_at_pc_full_level(3,nlev,mesh%nv_halo(1))) ! 3 means 3 components of a cartesian vector
+      if(.not.allocated(velocity_vector_at_dc_full_level)) allocate(velocity_vector_at_dc_full_level(3,nlev,mesh%nt))
 
-! pass1  
-!!!!$omp parallel  private(iv,div_sum,inb,index_edge,ilev) 
-!!!!$omp do schedule(dynamic,5)
-    do iv = 1, mesh%nv_halo(2)
-       div_sum(1:nlev) = 0._r8
-       do inb = 1, mesh%vtx_nnb(iv)
-          index_edge  = mesh%vtx_ed(inb, iv)
-          do ilev = 1, nlev
-             div_sum(ilev)  = div_sum(ilev)+scalar_normal_velocity_at_edge_full_level(ilev,index_edge)*mesh%plg_nr(inb, iv)*&
-                                            mesh%edp_leng(index_edge)
-          end do
-       end do
-! divergence
-       div_like_tendency(1:nlev,iv) = div_sum(1:nlev)/(rearth*mesh%plg_areag(iv))
-    end do
-!!!!$omp end do nowait
-!!!!$omp end parallel
+      do iv  = 1, mesh%nv_halo(1)
+         velocity_vector_at_pc_full_level(:,:,iv) = 0._r8
+         do inb  = 1, mesh%vtx_nnb(iv)
+            ie = mesh%vtx_ed(inb,iv)
+            do ilev = 1, nlev
+                velocity_vector_at_pc_full_level(:,ilev,iv) = velocity_vector_at_pc_full_level(:,ilev,iv)+perot_weight_at_pc(:,inb,iv)*&
+                                                   scalar_hwind_lap2nd_at_edge_full_level(ilev,ie)
+            end do
+         end do
+      end do
 
-! pass2
-    do ie = 1, mesh%ne_halo(1)
-       do ilev = 1, nlev
-          grad_of_div(ilev,ie) = mesh%edt_edpNr_edtTg(ie)*(div_like_tendency(ilev,mesh%edt_v(2,ie))-&
-                                                           div_like_tendency(ilev,mesh%edt_v(1,ie)))/(rearth*mesh%edt_leng(ie))
-       end do
-    end do
+      do it  = 1, mesh%nt
+         velocity_vector_at_dc_full_level(:,:,it) = 0._r8
+         do inb = 1, mesh%tri_nnb(it)
+            ie = mesh%tri_ed(inb,it)
+            do ilev = 1, nlev
+               velocity_vector_at_dc_full_level(:,ilev,it) = velocity_vector_at_dc_full_level(:,ilev,it)+perot_weight_at_dc(:,inb,it)*&
+                                                   scalar_hwind_lap2nd_at_edge_full_level(ilev,ie)
+            end do
+         end do
+      end do
 
-! pass3
-    do iv = 1, mesh%nv_halo(1)
-       div_sum(1:nlev) = zero
-       do inb = 1, mesh%vtx_nnb(iv)
-          index_edge  = mesh%vtx_ed(inb, iv)
-          do ilev = 1, nlev
-             div_sum(ilev)  = div_sum(ilev)+grad_of_div(ilev,index_edge)*mesh%plg_nr(inb, iv)*mesh%edp_leng(index_edge)
-          end do
-       end do
-       div_like_tendency(1:nlev,iv) = div_sum(1:nlev)/(rearth*mesh%plg_areag(iv))
-    end do
+!-----------------------------------------------------------------------
+!         pc2
+!          |
+!    dc1---e---dc2
+!          |
+!         pc1
+!-----------------------------------------------------------------------
 
-! pass4
-    do ie = 1, mesh%ne_compute
-       do ilev = 1, nlev
-          div_damping_4th_tendency(ilev,ie) = -coef*mesh%edt_edpNr_edtTg(ie)*(div_like_tendency(ilev,mesh%edt_v(2,ie))-&
-                                                                        div_like_tendency(ilev,mesh%edt_v(1,ie)))/(rearth*mesh%edt_leng(ie))
-       end do
-    end do
+      DO ie = 1, mesh%ne
 
-    return
-    end subroutine calc_hori_div2d_o4_damping
+         pc1     = mesh%edt_v(1,ie)
+         pc2     = mesh%edt_v(2,ie)
+         dc1     = mesh%edp_v(1,ie)
+         dc2     = mesh%edp_v(2,ie)
+
+         do ilev = 1, nlev
+            un_pc1  = dot_product(velocity_vector_at_pc_full_level(:,ilev,pc1),mesh%edp_nr(1:3,ie))
+            un_pc2  = dot_product(velocity_vector_at_pc_full_level(:,ilev,pc2),mesh%edp_nr(1:3,ie))
+            un_dc1  = dot_product(velocity_vector_at_dc_full_level(:,ilev,dc1),mesh%edp_nr(1:3,ie))
+            un_dc2  = dot_product(velocity_vector_at_dc_full_level(:,ilev,dc2),mesh%edp_nr(1:3,ie))
+
+!
+! high-order laplacian of normal wind for hyperviscosity
+!
+            scalar_hwind_lap4th_at_edge_full_level(ilev,ie) = (-1)**(order+1)*(4._r8**order)*coef*scaling_factor(ie)*&  ! coef and constant
+
+                                                             (un_pc1+un_pc2-2._r8*scalar_hwind_lap2nd_at_edge_full_level(ilev,ie))/((rearth*mesh%edt_leng(ie))**2)+&
+                                                             (un_dc1+un_dc2-2._r8*scalar_hwind_lap2nd_at_edge_full_level(ilev,ie))/((rearth*mesh%edp_leng(ie))**2)
+             if(flag.and.do_dycore_laplacian_6th)then ! store 4th for later 6th
+                scalar_hwind_laplace4th_at_edge_full_level%f(ilev,ie) = (un_pc1+un_pc2-2._r8*scalar_hwind_lap2nd_at_edge_full_level(ilev,ie))/((rearth*mesh%edt_leng(ie))**2)+&
+                                                                        (un_dc1+un_dc2-2._r8*scalar_hwind_lap2nd_at_edge_full_level(ilev,ie))/((rearth*mesh%edp_leng(ie))**2)
+             end if
+         end do
+
+      End do
+
+      if(allocated(velocity_vector_at_pc_full_level)) deallocate(velocity_vector_at_pc_full_level)
+      if(allocated(velocity_vector_at_dc_full_level)) deallocate(velocity_vector_at_dc_full_level)
+
+      return
+
+    end subroutine calc_hrwind_laplacian_4th_full_1
 
 !-------------------------------------------------------------------------
 ! These routines use the vector identity to calculate
@@ -1111,4 +1212,4 @@
 
     end subroutine calc_hrwind_laplacian_4th_full_vi
 
-  end module grist_dycore_diffusion_module
+  end module grist_dycore_diffusion_module_mixed

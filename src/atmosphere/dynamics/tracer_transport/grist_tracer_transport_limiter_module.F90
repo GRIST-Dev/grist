@@ -30,9 +30,14 @@
     real(r8), parameter :: zero = 0._r8
     real(r8), parameter :: half = 0.5_r8
 #ifndef SPCODE
+#ifdef REG_KESI
     real(r8), parameter :: kesi = 1.e-80_r8
 #else
-    real(r8), parameter :: kesi = 1.e-40_r8
+    real(r8), parameter :: kesi = TINY(1._r8)
+#endif
+#else
+    !real(r8), parameter :: kesi = 1.e-40_r8
+    real(r8), parameter :: kesi = TINY(1._r8)
 #endif
     real(r8), parameter :: bigy = 1.e16_r8
 

@@ -87,7 +87,8 @@
 ! tracer transport
    use grist_tracer_transport_time_integration_hvsplit, only: tracer_transport_time_integration_run
    use grist_tracer_transport_diagnose_module,          only: tracer_transport_diagnose_global_tracer_mass, &
-                                                              tracer_transport_diagnose_global_crnum
+                                                              tracer_transport_diagnose_global_crnum, &
+                                                              tracer_transport_diagnose_global_mass
    use grist_tracer_transport_vars_module,              only: tracer_transport_evaluate_mif
 ! dtp
    use grist_dtp_coupling_module,                       only: grist_dtp_coupling_driver_tend,&
@@ -102,6 +103,20 @@
                                         gcm_write_restart_file_h0
    use grist_clocks,             only: clock_id, clock_begin, clock_end
 
+#ifdef MIXCODE
+   use grist_dycore_diffusion_module_mixed,    only: grist_dycore_diffusion_run_mixed=>grist_dycore_diffusion_run, &
+                                                     grist_tracer_diffusion_run_mixed=>grist_tracer_diffusion_run
+
+   use grist_dycore_module_vars_control_mixed,          only: grist_dycore_module_vars_mixed_init
+   use grist_dycore_time_integration_2d_mixed,          only: dycore_time_integration_init_mixed => dycore_time_integration_init, &
+                                                              dycore_time_integration_run_mixed  => dycore_time_integration_run
+   use grist_tracer_module_vars_control_mixed,          only: grist_tracer_module_vars_mixed_init, &
+                                                              grist_tracer_transport_vars_r8_to_r4, &
+                                                              grist_tracer_transport_vars_r4_to_r8
+   use grist_tracer_transport_time_integration_hvsplit_mixed, only: tracer_transport_time_integration_run_mixed => tracer_transport_time_integration_run,  &
+                                                              tracer_transport_time_integration_init_mixed => tracer_transport_time_integration_init
+#endif
+
    implicit none
 
    private
@@ -110,9 +125,9 @@
                grist_gcm_final
  
 ! module local
-   real(8)              :: time_beg, step_beg
-   real(8)              :: time_end, step_end
-   real(8)              :: time_elapse, step_elapse
+   real(r8)             :: time_beg, step_beg
+   real(r8)             :: time_end, step_end
+   real(r8)             :: time_elapse, step_elapse
    real(r8)             :: potential_enstropy
    integer(i4)          :: itimestep
    integer(i4)          :: it
@@ -142,6 +157,9 @@
 ! dycore
    use grist_dycore_vars_module,         only: grist_dycore_vars_construct
    use grist_dycore_initial_module,      only: grist_dycore_initial
+#ifdef MIXCODE
+   use grist_dycore_diffusion_module_mixed,    only: grist_diffusion_init_mixed => grist_diffusion_init
+#endif
    use grist_dycore_time_integration_2d, only: dycore_time_integration_init
 ! dycore-diffusion
    use grist_dycore_diffusion_module,    only: grist_diffusion_init
@@ -211,6 +229,9 @@
 ! hpe initial
 !
      call init_hpe_constants
+#ifdef MIXCODE
+     call grist_dycore_module_vars_mixed_init(local_block%full_domain, 1)
+#endif
 !
 ! dycore initial
 !
@@ -250,7 +271,9 @@
 !
 ! dycore-time-integration
 !
+#ifndef MIXCODE
      call dycore_time_integration_init(local_block%full_domain)
+#endif
 !
 ! diffusion
 !
@@ -259,6 +282,16 @@
 ! tracer transport
 !
      call tracer_transport_time_integration_init(local_block%full_domain)
+
+#ifdef MIXCODE
+     call dycore_time_integration_init_mixed(local_block%full_domain)
+     call grist_diffusion_init_mixed(local_block%full_domain)
+     call grist_tracer_module_vars_mixed_init(local_block%full_domain)
+     if(trim(working_mode).ne.'dycore')then
+     call tracer_transport_time_integration_init_mixed(local_block%full_domain)
+     end if
+#endif
+
 !
 ! dtp coupling
 !
@@ -414,11 +447,19 @@
        ! call physics forcing here
        if(use_phys.and.trim(physpkg).eq.'HSDRY_EXP') call grist_dtp_coupling_driver_tend(mesh, nlev, ntracer, nmif, model_timestep, itimestep, physpkg)
        ! call explicit diffusion tendencies
+#ifdef MIXCODE
+       if(do_dycore_laplacian_2nd.or.do_dycore_laplacian_4th) call grist_dycore_diffusion_run_mixed(mesh, nexpdif_level,ntracer)
+#else
        if(do_dycore_laplacian_2nd.or.do_dycore_laplacian_4th) call grist_dycore_diffusion_run(mesh, nexpdif_level,ntracer)
+#endif
 
        call tracer_transport_evaluate_mif(mesh,nlev) ! actually works nothing but make code work
        !integration
+#ifdef MIXCODE
+       call dycore_time_integration_run_mixed(mesh,dycore_timestep,itimestep)
+#else
        call dycore_time_integration_run(mesh,dycore_timestep,itimestep)
+#endif
        !diagnose
        if(itimestep .gt. itimestep_pre)then
          call dycore_diagnose_total_energy(mesh)
@@ -460,11 +501,19 @@
 
   subroutine grist_gcm_control_run_tracer(mesh)
    type(global_domain), intent(inout) :: mesh
+
+#ifdef MIXCODE
+     call grist_tracer_transport_vars_r8_to_r4
+#endif
     DO itimestep = istep_beg, istep_end
        if(mpi_rank() == 0) print*,"CURRENT TIMESTEP=",ITIMESTEP,":",istep_end
        call cpu_time(step_beg)
        !integration
+#ifdef MIXCODE
+       call tracer_transport_time_integration_run_mixed(mesh,tracer_timestep,itimestep,gcm_testcase)
+#else
        call tracer_transport_time_integration_run(mesh,tracer_timestep,itimestep,gcm_testcase)
+#endif
        !diagnose
        if(itimestep .gt. itimestep_pre)then
          call tracer_transport_diagnose_global_tracer_mass(mesh)
@@ -478,7 +527,12 @@
        !   call dycore_diagnose_variables(mesh)
        !   call gcm_output_atm_h1_file(mesh, itimestep)
        !end if
-       if(write_history_h1) call gcm_output_history_h1(mesh, itimestep,nsteps,h1_history_freq) ! most vars are instant state; default
+       if(write_history_h1)then
+#ifdef MIXCODE
+          call grist_tracer_transport_vars_r4_to_r8
+#endif
+          call gcm_output_history_h1(mesh, itimestep,nsteps,h1_history_freq) ! most vars are instant state; default
+       end if
 
        if(mpi_rank() == 0 .and. trim(run_type).eq.'restart') then
          open(1,file=trim(outdir)//'step_stop.txt',status='unknown')
@@ -518,8 +572,12 @@
      ! call diffusion operator here
      !if(do_laplacian_2nd) call grist_diffusion_run(mesh, nexpdif_level,ntracer)
 
+#ifdef MIXCODE
+     call grist_tracer_transport_vars_r8_to_r4
+#endif
+
     if(use_phys)then
-       call tracer_transport_evaluate_mif(mesh,nlev) ! newly added for real-physics, does not affect regression old results,
+       call tracer_transport_evaluate_mif(mesh,nlev) ! newly added for real-physics, does not affect regression old results
        call grist_dtp_coupling_driver_tend(mesh, nlev, ntracer, nmif, model_timestep,max(1,istep_beg),physpkg)
     end if
     call clock_begin(clock_dtploop)
@@ -530,8 +588,13 @@
 !
 ! test calling phys before of dyn and do update
 !
+#ifdef MIXCODE
+       if(do_dycore_laplacian_2nd.or.do_dycore_laplacian_4th) call grist_dycore_diffusion_run_mixed(mesh, nexpdif_level,ntracer)
+       if(do_tracer_laplacian_2nd) call grist_tracer_diffusion_run_mixed(mesh, nexpdif_level,ntracer)
+#else
        if(do_dycore_laplacian_2nd.or.do_dycore_laplacian_4th) call grist_dycore_diffusion_run(mesh, nexpdif_level,ntracer)
        if(do_tracer_laplacian_2nd) call grist_tracer_diffusion_run(mesh, nexpdif_level,ntracer)
+#endif
 !
 ! dynamics integration
 !
@@ -544,11 +607,19 @@
 
           call tracer_transport_evaluate_mif(mesh,nlev)
           do idstep = 1, dstep_in_tstep
+#ifdef MIXCODE
+             call dycore_time_integration_run_mixed(mesh,dycore_timestep,itimestep)
+#else
              call dycore_time_integration_run(mesh,dycore_timestep,itimestep)
+#endif
              call grist_d2t_coupling_driver(mesh, nlev, idstep, dstep_in_tstep)
              call grist_dtp_time_average(mesh, nlev, nlevp, idstep, dstep_in_tstep,itstep, tstep_in_mstep) ! time-average www/omega
           end do
+#ifdef MIXCODE
+          call tracer_transport_time_integration_run_mixed(mesh,tracer_timestep,itimestep,gcm_testcase)
+#else
           call tracer_transport_time_integration_run(mesh,tracer_timestep,itimestep,gcm_testcase)
+#endif
        end do
 !
 ! diagnostics at model step
@@ -561,6 +632,7 @@
          call dycore_diagnose_mass_pt(mesh)
          call tracer_transport_diagnose_global_tracer_mass(mesh)
          call tracer_transport_diagnose_global_crnum(mesh,tracer_timestep)
+         call tracer_transport_diagnose_global_mass(mesh)
        end if
 !
 ! call physics forcing here
@@ -581,7 +653,12 @@
        !   call gcm_output_atm_h1_file(mesh, itimestep)
        !  ! call gcm_rest_physics_variables
        !end if
-       if(write_history_h1) call gcm_output_history_h1(mesh, itimestep,nsteps,h1_history_freq) ! most vars are instant state; default
+       if(write_history_h1) then
+#ifdef MIXCODE
+          call grist_tracer_transport_vars_r4_to_r8
+#endif
+          call gcm_output_history_h1(mesh, itimestep,nsteps,h1_history_freq) ! most vars are instant state; default
+       end if
 
        if(mpi_rank() == 0 .and. trim(run_type).eq.'restart') then
          open(1,file=trim(outdir)//'step_stop.txt',status='unknown')
@@ -725,6 +802,11 @@
     clock_diagte  = clock_id('diagte')
     clock_tracer  = clock_id('tracer')
     clock_d2t     = clock_id('d2t')
+
+#ifdef MIXCODE
+     call grist_tracer_transport_vars_r8_to_r4
+#endif
+
 !
 ! SST
 !
@@ -760,8 +842,13 @@
 !
 
        if(.not.use_expdif_tstep)then
+#ifdef MIXCODE
+          if(do_dycore_laplacian_2nd.or.do_dycore_laplacian_4th) call grist_dycore_diffusion_run_mixed(mesh, nexpdif_level,ntracer)
+          if(do_tracer_laplacian_2nd) call grist_tracer_diffusion_run_mixed(mesh, nexpdif_level,ntracer)
+#else
           if(do_dycore_laplacian_2nd.or.do_dycore_laplacian_4th) call grist_dycore_diffusion_run(mesh, nexpdif_level,ntracer)
           if(do_tracer_laplacian_2nd) call grist_tracer_diffusion_run(mesh, nexpdif_level,ntracer)
+#endif
        end if
 !
 ! integration
@@ -774,19 +861,32 @@
 ! call expdif before each dynamics (n dycore + 1 tracer) step
 !
           if(use_expdif_tstep)then
+#ifdef MIXCODE
+             if(do_dycore_laplacian_2nd.or.do_dycore_laplacian_4th) call grist_dycore_diffusion_run_mixed(mesh, nexpdif_level,ntracer)
+             if(do_tracer_laplacian_2nd) call grist_tracer_diffusion_run_mixed(mesh, nexpdif_level,ntracer)
+#else
              if(do_dycore_laplacian_2nd.or.do_dycore_laplacian_4th) call grist_dycore_diffusion_run(mesh, nexpdif_level,ntracer)
              if(do_tracer_laplacian_2nd) call grist_tracer_diffusion_run(mesh, nexpdif_level,ntracer)
+#endif
           end if
           call tracer_transport_evaluate_mif(mesh,nlev)
           do idstep = 1, dstep_in_tstep
+#ifdef MIXCODE
+             call dycore_time_integration_run_mixed(mesh,dycore_timestep,itimestep,idstep,dstep_in_tstep,itstep,tstep_in_mstep)
+#else
              call dycore_time_integration_run(mesh,dycore_timestep,itimestep,idstep,dstep_in_tstep,itstep,tstep_in_mstep)
+#endif
              call clock_begin(clock_d2t)
              call grist_d2t_coupling_driver(mesh, nlev, idstep, dstep_in_tstep)
              call grist_dtp_time_average(mesh, nlev, nlevp, idstep, dstep_in_tstep,itstep,tstep_in_mstep) ! time-average www/omega
              call clock_end(clock_d2t)
           end do
           call clock_begin(clock_tracer)
+#ifdef MIXCODE
+          call tracer_transport_time_integration_run_mixed(mesh,tracer_timestep,itimestep,gcm_testcase,itstep,tstep_in_mstep)
+#else
           call tracer_transport_time_integration_run(mesh,tracer_timestep,itimestep,gcm_testcase,itstep,tstep_in_mstep)
+#endif
           call clock_end(clock_tracer)
        end do
        call clock_end(clock_dynamics)
@@ -821,10 +921,24 @@
 ! I/O
 !
        call clock_begin(clock_diagio)
-       if(write_history_h0) call gcm_output_history_h0(mesh, itimestep) ! monthly-averaged
+       if(write_history_h0)then
+#ifdef MIXCODE
+          call grist_tracer_transport_vars_r4_to_r8
+#endif
+          call gcm_output_history_h0(mesh, itimestep) ! monthly-averaged
+       end if
 
-       if(write_history_h1.and..not.write_history_h1_separate) call gcm_output_history_h1(mesh, itimestep,nsteps,h1_history_freq)
+       if(write_history_h1.and..not.write_history_h1_separate)then
+#ifdef MIXCODE
+          call grist_tracer_transport_vars_r4_to_r8
+#endif
+          call gcm_output_history_h1(mesh, itimestep,nsteps,h1_history_freq)
+       end if
+       
        if(write_history_h1_separate)then
+#ifdef MIXCODE
+          call grist_tracer_transport_vars_r4_to_r8
+#endif
           call gcm_output_history_h1_1d(mesh, itimestep,nsteps,h1_1d_history_freq)
           call gcm_output_history_h1_2d(mesh, itimestep,nsteps,h1_2d_history_freq)
           call gcm_output_history_h1_3d(mesh, itimestep,nsteps,h1_3d_history_freq)
@@ -855,7 +969,11 @@
    use grist_datam_static_data_module,     only: grist_static_data_destruct
    use grist_dycore_time_integration_2d,   only: dycore_time_integration_final
    use grist_dycore_vars_module,           only: grist_dycore_vars_destruct
-   use grist_dycore_diffusion_module,      only: grist_diffusion_destruct 
+#ifdef MIXCODE
+   use grist_dycore_diffusion_module,      only: grist_diffusion_destruct_mixed=>grist_diffusion_destruct
+#else
+   use grist_dycore_diffusion_module,      only: grist_diffusion_destruct
+#endif
    use grist_physics_data_structure,       only: grist_physics_data_structure_destruct
    use grist_dtp_vars_module,              only: grist_dtp_vars_destruct
    use grist_dtp_interface_module,         only: grist_dtp_interface_destruct
@@ -874,9 +992,15 @@
 
 ! data clean and destruct
      call grist_static_data_destruct
+#ifndef MIXCODE
      call dycore_time_integration_final
+#endif
      call grist_dycore_vars_destruct
+#ifdef MIXCODE
+     call grist_diffusion_destruct_mixed
+#else
      call grist_diffusion_destruct
+#endif
      call grist_physics_data_structure_destruct
      call grist_dtp_vars_destruct
      call grist_dtp_interface_destruct

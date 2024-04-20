@@ -66,6 +66,10 @@
                                             gcm_read_restart_file_phy1
 #endif
 
+#ifdef MIXCODE
+  use grist_data_utils,               only: scalar_r8_to_r4, scalar_r4_to_r8
+#endif
+
   use grist_util_module,    only: write_string
   use grist_data_types,     only: scalar_3d_field, scalar_2d_field, scalar_1d_field, data2d_temp
   implicit none
@@ -245,6 +249,9 @@
        end if
     end if
 
+#ifdef MIXCODE
+    call dyn_restart_vars_r8_to_r4
+#endif
     END IF
 
     return
@@ -402,6 +409,9 @@
 ! [2] Write Restart File
 !================================================
 
+#ifdef MIXCODE
+    call dyn_restart_vars_r4_to_r8
+#endif
     call wrap_output_init_1d(mesh)
     call wrap_add_field_1d(dycoreVarSurface%scalar_hpressure_n,"hps")
     call wrap_output_1d_group(mesh, outdir,fname_restart1)
@@ -442,6 +452,28 @@
 
     return
   end subroutine gcm_write_restart_file_dyn
+
+#ifdef MIXCODE
+  subroutine dyn_restart_vars_r4_to_r8
+
+    implicit none
+
+    call scalar_r4_to_r8(dycoreVarCellFace%scalar_pressure_n)
+    call scalar_r4_to_r8(tracerVarCellFull%scalar_tracer_mxrt_n)
+    call scalar_r4_to_r8(tracerVarCellFull%scalar_tracer_mass_n)
+
+  end subroutine dyn_restart_vars_r4_to_r8
+
+  subroutine dyn_restart_vars_r8_to_r4
+
+    implicit none
+
+    call scalar_r8_to_r4(dycoreVarCellFace%scalar_pressure_n)
+    call scalar_r8_to_r4(tracerVarCellFull%scalar_tracer_mxrt_n)
+    call scalar_r8_to_r4(tracerVarCellFull%scalar_tracer_mass_n)
+
+  end subroutine dyn_restart_vars_r8_to_r4
+#endif
 
 #ifdef AMIPW_PHYSICS
 

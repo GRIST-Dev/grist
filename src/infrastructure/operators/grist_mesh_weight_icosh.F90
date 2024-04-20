@@ -10,11 +10,6 @@
 !              2) The B weight for polynomial recons
 !              3) scaling factor for VR (hyperdiffusion)
 ! Revision history: 
-!      Re-store all mesh weights into appropriate compute patterns (cp1; cp2). 
-!  This is better for runtime and has been under numerous tests that produce 
-!  identical solutions as before (-DCP2_VTX/EDT/EDP/TRI/PLG). The style of 
-!  type%vtx%xx is more suitable for computing weight itself (More straightforward 
-!  and flexible nbrs). After re-stored, deallocate them all at runtime.
 !----------------------------------------------------------------------------
 
  module grist_mesh_weight_icosh
@@ -142,9 +137,7 @@
                mesh%plg(iv)%trsk_weight(iee,iep)=0._r8
                cycle
             end if
-!
-! key to remember, who-1, who is e
-!
+
             if(iep.gt.iee)then  ! e.g., w(2,5)
                riv_sum = 0._r8
                do j = iep, mesh%vtx(iv)%nnb

@@ -21,9 +21,9 @@
   use grist_util_module,    only: write_string
   use grist_nml_module,     only: outdir, testcase, working_mode, &
                                   advection_scheme, conserve_scheme,&
-                                  pv_order, nlev, ntracer, doNotDiagnose
+                                  pv_order, nlev, ntracer, doNotDiagnose, grid_info
 ! tracer
-  use grist_tracer_transport_vars_module, only: tracerVarCellFace, tracerVarCellFull, tracerVarEdgeFull
+  use grist_tracer_transport_vars_module, only: tracerVarCellFace, tracerVarCellFull, tracerVarEdgeFull, tracerVarSurface
   use grist_dycore_vars_module, only: dycoreVarCellFull
 
   implicit none
@@ -31,7 +31,9 @@
    private
 
    public   :: tracer_transport_diagnose_global_tracer_mass, &
-               tracer_transport_diagnose_global_crnum
+               tracer_transport_diagnose_global_crnum, &
+               tracer_transport_diagnose_global_mass
+
 
    character(len=128)     :: c_glevel
    character(len=128)     :: c_testcase
@@ -108,6 +110,42 @@
      return
    end subroutine tracer_transport_diagnose_global_tracer_mass
 
+   subroutine tracer_transport_diagnose_global_mass(mesh)
+     implicit none
+! io
+     type(global_domain), intent(in)    ::   mesh
+! local
+     integer(i4)                          :: iv, ilev,ierr
+     real(r8)                             :: scalar_mass_at_pc,scalar_mass_at_pc_all
+
+     scalar_mass_at_pc  = 0._r8
+
+     do iv = 1, mesh%nv
+           scalar_mass_at_pc = scalar_mass_at_pc+tracerVarSurface%tend_hpressure%f(iv)*mesh%plg_areag(iv)
+     end do
+#ifndef SEQ_GRIST
+     If(.not.doNotDiagnose)then
+     call reduce(scalar_mass_at_pc, scalar_mass_at_pc_all, 'sum')
+     End if
+#else
+     scalar_mass_at_pc_all = scalar_mass_at_pc
+#endif
+ 
+     call write_string(mesh%glevel     , c_glevel)
+     call write_string(testcase        , c_testcase)
+
+     If(.not.doNotDiagnose)then
+
+     if(mpi_rank() == 0)then
+     open(1,file=trim(outdir)//"GCM.GRIST."//trim(grid_info)//"-"//trim(working_mode)//"-"//trim(conserve_scheme)//"-TRACER-MASS-TEND.txt",access='append')
+     write(1,*) scalar_mass_at_pc_all
+     close(1)
+     end if
+
+     End if
+     return
+   end subroutine tracer_transport_diagnose_global_mass
+   
   subroutine tracer_transport_diagnose_global_crnum(mesh,dtime)
 ! io
     type(global_domain),  intent(inout) :: mesh

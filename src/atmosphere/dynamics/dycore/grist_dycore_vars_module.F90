@@ -20,6 +20,10 @@
     use grist_data_types,   only: scalar_1d_field, scalar_2d_field
     use grist_constants,    only: rearth, i4, r8, pi, zero
     use grist_nml_module,   only: nlev, nlevp
+    use grist_mpi
+#ifdef MIXCODE
+    use grist_constants,    only: r4 => ns
+#endif
 
     implicit none
 
@@ -182,19 +186,19 @@
 !================================================
 ! edge, full level
 !================================================
-      call dycore_fill_edgeVar_2d_0(mesh,nlev,dycoreVarEdgeFull%scalar_normal_velocity_n)
-      call dycore_fill_edgeVar_2d_0(mesh,nlev,dycoreVarEdgeFull%scalar_normal_mass_flux_n) 
+      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%scalar_normal_velocity_n)
+      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%scalar_normal_mass_flux_n,3)
       call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%scalar_normal_pt_mass_flux_n)
-      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%scalar_U_wind_n)    
+      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%scalar_U_wind_n)
       call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%scalar_V_wind_n)
-      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%scalar_grad_delp_n)    
-      call dycore_fill_edgeVar_2d_0(mesh,nlev,dycoreVarEdgeFull%tend_normal_velocity_vadv)   
-      call dycore_fill_edgeVar_2d_0(mesh,nlev,dycoreVarEdgeFull%tend_normal_velocity_pgf)           
-      call dycore_fill_edgeVar_2d_0(mesh,nlev,dycoreVarEdgeFull%tend_normal_velocity_gz)     
-      call dycore_fill_edgeVar_2d_0(mesh,nlev,dycoreVarEdgeFull%tend_normal_velocity_ke)     
-      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%tend_normal_velocity_nct)    
-      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%tend_hwind_laplacian_2nd)    
-      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%tend_hwind_laplacian_4th)
+      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%scalar_grad_delp_n)
+      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%tend_normal_velocity_vadv,3)
+      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%tend_normal_velocity_pgf,3)
+      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%tend_normal_velocity_gz,3)
+      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%tend_normal_velocity_ke,3)
+      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%tend_normal_velocity_nct,3)
+      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%tend_hwind_laplacian_2nd,3)
+      call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%tend_hwind_laplacian_4th,3)
       call dycore_fill_edgeVar_2d(mesh,nlev,dycoreVarEdgeFull%tend_hwind_laplacian_6th)
 !================================================
 ! primal cell, full level
@@ -207,9 +211,9 @@
       call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_temp_n)
       call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_delhp_n)
       call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_delhp_np1)
-      call dycore_fill_primVar_2d_0(mesh,nlev,dycoreVarCellFull%scalar_divergence_n)
+      call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_divergence_n)
       call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_geopotential_n)
-      call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_eta_mass_flux_n)
+      call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_eta_mass_flux_n,2)
       call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_hpressure_n)
       call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_mpressure_n)
       call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_pressure_n)   ! nh-diag-var
@@ -218,10 +222,10 @@
       call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_alpha_np1)    ! nh-diag-var
       call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_www_n)
       call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_delp_n)       ! nh-temp-var
-      call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_delp_np1)     ! nh-temp-var
+      call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_delp_np1,3)     ! nh-temp-var
       call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_omega_n)
       call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%scalar_omega_timavg)
-      call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%tend_mass_hori)
+      call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%tend_mass_hori,2)
       call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%tend_mass_pt_hori)
       call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%tend_mass_pt_vert)
       call dycore_fill_primVar_2d(mesh,nlev,dycoreVarCellFull%tend_mass_pt_laplacian_2nd)
@@ -230,37 +234,37 @@
 ! dual cell, full level
 !================================================
       call dycore_fill_dualVar_2d(mesh,nlev,dycoreVarVertFull%scalar_abs_vor_n)
-      call dycore_fill_dualVar_2d_0(mesh,nlev,dycoreVarVertFull%scalar_rel_vor_n)
+      call dycore_fill_dualVar_2d(mesh,nlev,dycoreVarVertFull%scalar_rel_vor_n)
       call dycore_fill_dualVar_2d(mesh,nlev,dycoreVarVertFull%scalar_pot_vor_n)
 !================================================
 ! edge, face level
 !================================================
       call dycore_fill_edgeVar_2d(mesh,nlevp,   dycoreVarEdgeFace%scalar_grad_pressure_n)
       !call dycore_fill_edgeVar_2d(mesh,nlevp, dycoreVarEdgeFace%scalar_normal_velocity_n)
-      call dycore_fill_edgeVar_2d(mesh,nlevp,dycoreVarEdgeFace%scalar_normal_mass_flux_n)
+      call dycore_fill_edgeVar_2d(mesh,nlevp,dycoreVarEdgeFace%scalar_normal_mass_flux_n,3)
 !================================================
 ! primal cell, face level
 !================================================
       call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%scalar_geopotential_n)
       call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%scalar_hpressure_n)
-      call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%scalar_eta_mass_flux_n)
-      call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%tend_mass_hori)
+      call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%scalar_eta_mass_flux_n,2)
+      call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%tend_mass_hori,3)
       call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%scalar_delhp_n)
       call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%scalar_delp_n)
-      call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%scalar_www_n)     ! nh-prog-var
+      call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%scalar_www_n,2)     ! nh-prog-var
       call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%scalar_phi_n)     ! nh-prog-var
       call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%scalar_www_timavg)      ! nh-diag-var
-      call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%tend_www_laplacian_2nd) ! diffusion tend 
+      call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%tend_www_laplacian_2nd,3) ! diffusion tend 
       call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%tend_www_laplacian_4th) ! diffusion tend 
-      call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%scalar_pressure_n)      ! nh-diag-var
-      call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%scalar_mpressure_n)     ! moist presssure 
+      call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%scalar_pressure_n,2)      ! nh-diag-var
+      call dycore_fill_primVar_2d(mesh,nlevp,dycoreVarCellFace%scalar_mpressure_n,2)     ! moist presssure 
 !================================================
 ! surface
 !================================================
     call dycore_fill_primVar_1d(mesh,dycoreVarSurface%scalar_hpressure_n)
     call dycore_fill_primVar_1d(mesh,dycoreVarSurface%scalar_geopotential_n)
     call dycore_fill_primVar_1d(mesh,dycoreVarSurface%scalar_pressure_n)
-    call dycore_fill_primVar_1d(mesh,dycoreVarSurface%tend_hpressure_cnty)
+    call dycore_fill_primVar_1d(mesh,dycoreVarSurface%tend_hpressure_cnty,2)
 
 !================================================
 ! geometric
@@ -342,8 +346,8 @@
       call wrap_deallocate_2d(dycoreVarCellFull%scalar_pressure_np1)     ! nh-diag-var
       call wrap_deallocate_2d(dycoreVarCellFull%scalar_alpha_np1)        ! nh-diag-var
       call wrap_deallocate_2d(dycoreVarCellFull%scalar_www_n)
-      call wrap_deallocate_2d(dycoreVarCellFull%scalar_delp_n)       ! nh-temp-var
-      call wrap_deallocate_2d(dycoreVarCellFull%scalar_delp_np1)     ! nh-temp-var
+      call wrap_deallocate_2d(dycoreVarCellFull%scalar_delp_n)        ! nh-temp-var
+      call wrap_deallocate_2d(dycoreVarCellFull%scalar_delp_np1)      ! nh-temp-var
       call wrap_deallocate_2d(dycoreVarCellFull%scalar_omega_n)       ! nh-diag-var
       call wrap_deallocate_2d(dycoreVarCellFull%scalar_omega_timavg)  ! nh-diag-var
       call wrap_deallocate_2d(dycoreVarCellFull%tend_mass_hori)
@@ -406,111 +410,216 @@
 ! BELOW are private
 !================================================
 
-    subroutine dycore_fill_edgeVar_2d(mesh,nLevel,var)
+    subroutine dycore_fill_edgeVar_2d(mesh,nLevel,var,opt)
        type(global_domain),   intent(in)    :: mesh
        integer(i4)        ,   intent(in)    :: nLevel
        type(scalar_2d_field), intent(inout) :: var
+       integer, optional,     intent(in)    :: opt
+! local
+       logical                              :: alloc_r4, alloc_r8
 
-        if(.not.allocated(var%f)) allocate(var%f(nLevel,mesh%ne))
-        var%f    = zero
-        var%pos  = 6
+       if(.not.present(opt))then
+           alloc_r8 = .True. ; alloc_r4 = .False.
+       else if(present(opt).and.opt.eq.2)then
+           alloc_r8 = .True. ; alloc_r4 = .True.
+       else if(present(opt).and.opt.eq.3)then
+           alloc_r8 = .False.; alloc_r4 = .True.
+       end if
+
+#ifndef MIXCODE
+        alloc_r8 = .True.
+#endif
+        if(alloc_r8)then
+           if(.not.allocated(var%f)) allocate(var%f(nLevel,mesh%ne))
+           var%f    = zero
+           var%pos  = 6
+        end if
+#ifdef MIXCODE
+        if(alloc_r4)then
+           if(.not.allocated(var%f_r4)) allocate(var%f_r4(nLevel,mesh%ne))
+           var%f_r4 = zero
+        end if
+#endif
         return
     end subroutine dycore_fill_edgeVar_2d
 
-    subroutine dycore_fill_edgeVar_2d_0(mesh,nLevel,var)
+    subroutine dycore_fill_primVar_2d(mesh,nLevel,var,opt)
        type(global_domain),   intent(in)    :: mesh
        integer(i4)        ,   intent(in)    :: nLevel
        type(scalar_2d_field), intent(inout) :: var
+       integer, optional,     intent(in)    :: opt
+! local
+       logical                              :: alloc_r4, alloc_r8
 
-        if(.not.allocated(var%f)) allocate(var%f(nLevel,mesh%ne))
-        var%f    = zero
-        var%pos  = 6
-        return
-    end subroutine dycore_fill_edgeVar_2d_0
+       if(.not.present(opt))then
+           alloc_r8 = .True. ; alloc_r4 = .False.
+       else if(present(opt).and.opt.eq.2)then
+           alloc_r8 = .True. ; alloc_r4 = .True.
+       else if(present(opt).and.opt.eq.3)then
+           alloc_r8 = .False.; alloc_r4 = .True.
+       end if
 
-    subroutine dycore_fill_primVar_2d(mesh,nLevel,var)
-       type(global_domain),   intent(in)    :: mesh
-       integer(i4)        ,   intent(in)    :: nLevel
-       type(scalar_2d_field), intent(inout) :: var
-
-        if(.not.allocated(var%f)) allocate(var%f(nLevel,mesh%nv))
-        var%f    = zero
-        var%pos  = 0
+#ifndef MIXCODE
+        alloc_r8 = .True.
+#endif
+        if(alloc_r8)then
+           if(.not.allocated(var%f)) allocate(var%f(nLevel,mesh%nv))
+           var%f    = zero
+           var%pos  = 0
+        end if
+#ifdef MIXCODE
+        if(alloc_r4)then
+           if(.not.allocated(var%f_r4)) allocate(var%f_r4(nLevel,mesh%nv))
+           var%f_r4 = zero
+        end if
+#endif
         return
     end subroutine dycore_fill_primVar_2d
 
-    subroutine dycore_fill_primVar_2d_0(mesh,nLevel,var)
+    subroutine dycore_fill_dualVar_2d(mesh,nLevel,var,opt)
        type(global_domain),   intent(in)    :: mesh
        integer(i4)        ,   intent(in)    :: nLevel
        type(scalar_2d_field), intent(inout) :: var
+       integer, optional,     intent(in)    :: opt
+! local
+       logical                              :: alloc_r4, alloc_r8
 
-        if(.not.allocated(var%f)) allocate(var%f(nLevel,mesh%nv))
-        var%f    = zero
-        var%pos  = 0
-        return
-    end subroutine dycore_fill_primVar_2d_0
+       if(.not.present(opt))then
+           alloc_r8 = .True. ; alloc_r4 = .False.
+       else if(present(opt).and.opt.eq.2)then
+           alloc_r8 = .True. ; alloc_r4 = .True.
+       else if(present(opt).and.opt.eq.3)then
+           alloc_r8 = .False.; alloc_r4 = .True.
+       end if
 
-    subroutine dycore_fill_dualVar_2d(mesh,nLevel,var)
-       type(global_domain),   intent(in)    :: mesh
-       integer(i4)        ,   intent(in)    :: nLevel
-       type(scalar_2d_field), intent(inout) :: var
-
-        if(.not.allocated(var%f)) allocate(var%f(nLevel,mesh%nt))
-        var%f    = zero
-        var%pos  = 1
+#ifndef MIXCODE
+        alloc_r8 = .True.
+#endif
+        if(alloc_r8)then
+           if(.not.allocated(var%f)) allocate(var%f(nLevel,mesh%nt))
+           var%f    = zero
+           var%pos  = 1
+        end if
+#ifdef MIXCODE
+        if(alloc_r4)then
+           if(.not.allocated(var%f_r4)) allocate(var%f_r4(nLevel,mesh%nt))
+           var%f_r4 = zero
+        end if
+#endif
         return
     end subroutine dycore_fill_dualVar_2d
 
-    subroutine dycore_fill_dualVar_2d_0(mesh,nLevel,var)
-       type(global_domain),   intent(in)    :: mesh
-       integer(i4)        ,   intent(in)    :: nLevel
-       type(scalar_2d_field), intent(inout) :: var
-
-        if(.not.allocated(var%f)) allocate(var%f(nLevel,mesh%nt))
-        var%f    = zero
-        var%pos  = 1
-        return
-    end subroutine dycore_fill_dualVar_2d_0
-
-    subroutine dycore_fill_edgeVar_1d(mesh,var)
+    subroutine dycore_fill_edgeVar_1d(mesh,var,opt)
        type(global_domain),   intent(in)    :: mesh
        type(scalar_1d_field), intent(inout) :: var
+       integer, optional,     intent(in)    :: opt
+! local
+       logical                              :: alloc_r4, alloc_r8
 
-        if(.not.allocated(var%f)) allocate(var%f(mesh%ne))
-        var%f    = zero
-        var%pos  = 6
+       if(.not.present(opt))then
+           alloc_r8 = .True. ; alloc_r4 = .False.
+       else if(present(opt).and.opt.eq.2)then
+           alloc_r8 = .True. ; alloc_r4 = .True.
+       else if(present(opt).and.opt.eq.3)then
+           alloc_r8 = .False.; alloc_r4 = .True.
+       end if
+
+#ifndef MIXCODE
+        alloc_r8 = .True.
+#endif
+        if(alloc_r8)then
+           if(.not.allocated(var%f)) allocate(var%f(mesh%ne))
+           var%f    = zero
+           var%pos  = 6
+        end if
+#ifdef MIXCODE
+        if(alloc_r4)then
+           if(.not.allocated(var%f_r4)) allocate(var%f_r4(mesh%ne))
+           var%f_r4 = zero
+        end if
+#endif
         return
     end subroutine dycore_fill_edgeVar_1d
 
-    subroutine dycore_fill_primVar_1d(mesh,var)
+    subroutine dycore_fill_primVar_1d(mesh,var,opt)
        type(global_domain),   intent(in)    :: mesh
        type(scalar_1d_field), intent(inout) :: var
+       integer, optional,     intent(in)    :: opt
+! local
+       logical                              :: alloc_r4, alloc_r8
 
-        if(.not.allocated(var%f)) allocate(var%f(mesh%nv))
-        var%f    = zero
-        var%pos  = 0
+       if(.not.present(opt))then
+           alloc_r8 = .True. ; alloc_r4 = .False.
+       else if(present(opt).and.opt.eq.2)then
+           alloc_r8 = .True. ; alloc_r4 = .True.
+       else if(present(opt).and.opt.eq.3)then
+           alloc_r8 = .False.; alloc_r4 = .True.
+       end if
+
+#ifndef MIXCODE
+        alloc_r8 = .True.
+#endif
+        if(alloc_r8)then
+           if(.not.allocated(var%f)) allocate(var%f(mesh%nv))
+           var%f    = zero
+           var%pos  = 0
+        end if
+#ifdef MIXCODE
+        if(alloc_r4)then
+           if(.not.allocated(var%f_r4)) allocate(var%f_r4(mesh%nv))
+           var%f_r4 = zero
+        end if
+#endif
         return
     end subroutine dycore_fill_primVar_1d
 
-    subroutine dycore_fill_dualVar_1d(mesh,var)
+    subroutine dycore_fill_dualVar_1d(mesh,var,opt)
        type(global_domain),   intent(in)    :: mesh
        type(scalar_1d_field), intent(inout) :: var
+       integer, optional,     intent(in)    :: opt
+! local
+       logical                              :: alloc_r4, alloc_r8
 
-        if(.not.allocated(var%f)) allocate(var%f(mesh%nt))
-        var%f    = zero
-        var%pos  = 1
+       if(.not.present(opt))then
+           alloc_r8 = .True. ; alloc_r4 = .False.
+       else if(present(opt).and.opt.eq.2)then
+           alloc_r8 = .True. ; alloc_r4 = .True.
+       else if(present(opt).and.opt.eq.3)then
+           alloc_r8 = .False.; alloc_r4 = .True.
+       end if
+
+#ifndef MIXCODE
+        alloc_r8 = .True.
+#endif
+        if(alloc_r8)then
+           if(.not.allocated(var%f)) allocate(var%f(mesh%nt))
+           var%f    = zero
+           var%pos  = 1
+        end if
+#ifdef MIXCODE
+        if(alloc_r4)then
+           if(.not.allocated(var%f_r4)) allocate(var%f_r4(mesh%nt))
+           var%f_r4 = zero
+        end if
+#endif
         return
     end subroutine dycore_fill_dualVar_1d
 
     subroutine wrap_deallocate_2d(var)
        type(scalar_2d_field), intent(inout)  :: var
        if(allocated(var%f)) deallocate(var%f)
+#ifdef MIXCODE
+       if(allocated(var%f_r4)) deallocate(var%f_r4)
+#endif
        return
     end subroutine wrap_deallocate_2d
 
     subroutine wrap_deallocate_1d(var)
        type(scalar_1d_field), intent(inout)  :: var
        if(allocated(var%f)) deallocate(var%f)
+#ifdef MIXCODE
+       if(allocated(var%f_r4)) deallocate(var%f_r4)
+#endif
        return
     end subroutine wrap_deallocate_1d
 
