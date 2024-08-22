@@ -666,7 +666,7 @@ contains
 
 ! if os, also update t_phy inside
     pstate_wrf%t_phy (1:ncell,1:nLevel-1,1) = pstate_wrf%th_phy(1:ncell,1:nLevel-1,1)*pstate_wrf%pi_phy(1:ncell,1:nLevel-1,1)
-    
+
     return
    end subroutine grist_wrf_microphysics_run
 

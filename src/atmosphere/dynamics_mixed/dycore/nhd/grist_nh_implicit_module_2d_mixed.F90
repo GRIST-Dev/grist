@@ -101,13 +101,9 @@
 
          iv=ceiling(ii/real(nlev,r8))
          ilev=ii-(iv-1)*nlev
-!      do iv      = 1, mesh%nv_halo(1)
-!      do ilev    = 1, nlev
 
          scalar_aaa_full_level(ilev,iv) = scalar_mif_full_level(ilev,iv)*gama*imbeta*imkesi*((gravity*dtime)**2)*&
                                          (scalar_pressure_full_level_n(ilev,iv))/(scalar_phi_face_level_n(ilev+1,iv)-scalar_phi_face_level_n(ilev,iv))
-!      end do
-!      end do
       end do
 !$omp end do nowait
 !$omp end parallel 
@@ -230,12 +226,8 @@
      do ii = 1, mesh%nv_halo(1)*nlev,1
         iv=ceiling(ii/real(nlev,r8))
         ilev=ii-(iv-1)*nlev
-!      do iv      = 1, mesh%nv_halo(1)
-!      do ilev    = 1, nlev
          scalar_aaa_full_level(ilev,iv) = scalar_mif_full_level(ilev,iv)*gama*imbeta*imkesi*((gravity*dtime)**2)*&
                                        (scalar_pressure_full_level_n(ilev,iv))/(scalar_phi_face_level_n(ilev+1,iv)-scalar_phi_face_level_n(ilev,iv))
-!      end do
-!      end do
      end do
 !$omp end do nowait
 !$omp end parallel 

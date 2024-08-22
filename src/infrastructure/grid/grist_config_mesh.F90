@@ -1,10 +1,7 @@
 
  !================================================
- !
  !  Configure mesh data from the grid file
- !
  !  Created by zhangyi on 16/8/5.
- !
  !================================================
 
  module grist_config_mesh

@@ -170,7 +170,11 @@
    use grist_tracer_transport_time_integration_hvsplit, only: tracer_transport_time_integration_init
    use grist_tracer_transport_prescribe_module,         only: tracer_transport_prescribe_ambient, &
                                                               tracer_transport_prescribe_initial
+#ifdef MIXCODE
+   use grist_tracer_transport_ffsl_module_mixed,        only: tracer_transport_ffsl_flux_sm10_init
+#else
    use grist_tracer_transport_ffsl_module,              only: tracer_transport_ffsl_flux_sm10_init
+#endif
 ! dtp
    use grist_dtp_vars_module,            only: grist_dtp_vars_construct
    use grist_dtp_initial_module,         only: grist_dtp_initial
@@ -982,7 +986,11 @@
 
    use grist_tracer_transport_vars_module, only: tracer_transport_vars_destruct
    use grist_tracer_transport_time_integration_hvsplit, only: tracer_transport_time_integration_final
+#ifdef MIXCODE
+   use grist_tracer_transport_ffsl_module_mixed, only: tracer_transport_ffsl_flux_sm10_final
+#else
    use grist_tracer_transport_ffsl_module, only: tracer_transport_ffsl_flux_sm10_final
+#endif
 
    use grist_dtp_interface_full_physpkg1,  only: grist_full_physpkg1_final
    use grist_dtp_interface_full_physpkg2,  only: grist_full_physpkg2_final

@@ -1,8 +1,9 @@
 module grist_tracer_transport_flux_operators_mixed
 
-    use grist_constants,    only: i4, r8, one => one_ns, half => half_ns
+    use grist_constants,    only: i4, r8, ns, one => one_ns, half => half_ns, rearth => rearth_ns
     use grist_constants,    only: r4 => ns
     use grist_domain_types, only: global_domain
+    use grist_tracer_transport_ffsl_module_mixed, only: tracer_transport_ffsl_flux_sm10
 ! data
     use grist_tracer_module_vars_control_mixed, only: edt_leng, edp_nr, vtx_p, edt_v_weight_prime_cell
 
@@ -127,10 +128,12 @@ contains
         real(r8)   ,           intent(in)    :: dtime
         integer(i4),           intent(in)    :: nlev, ntracer
 ! local
+        real(r4), allocatable                :: scalar_tangen_velocity_at_edge_full_level(:,:) ! nlev, ne
         real(r4),dimension(1:3)              :: v0v1 !0->1
         real(r4)                             :: beta
         real(r4)                             :: wind_edge
-        real(r4)                             :: der0
+        real(r4)                             :: der0, der1
+        real(r4)                             :: der0_4th, der1_4th
         real(r4)                             :: part1, part2, part3
         integer(i4)                          :: v0, v1, v_upwind
         integer(i4)                          :: ie, itracer, ilev, inb, kk
@@ -159,6 +162,88 @@ contains
         end do
 !$omp end do nowait
 !$omp end parallel 
+
+        case(2)  ! 2nd-order center difference
+
+            do ie = 1, mesh%ne
+            !v0                               = mesh%edt(ie)%v(1)
+            !v1                               = mesh%edt(ie)%v(2)
+            v0                               = mesh%edt_v(1,ie)
+            v1                               = mesh%edt_v(2,ie)
+            do ilev = 1, nlev
+                wind_edge                     = scalar_normal_velocity_at_edge_full_level(ilev,ie)
+                do itracer = 1, ntracer
+                    scalar_normal_mxrt_at_edge_full_level(itracer,ilev,ie) = &
+                    half*(scalar_tracer_mxrt_at_pc_full_level(itracer,ilev,v0)+&
+                        scalar_tracer_mxrt_at_pc_full_level(itracer,ilev,v1))
+                end do
+            end do
+            end do
+
+        case(3,4,5,6,7)  ! O3/4, damping depends on beta value
+
+            if(adv_flag.eq.3) beta=1        ! 3rd order
+            if(adv_flag.eq.4) beta=0        ! 4th order
+            if(adv_flag.eq.5) beta=0.25     ! hybrid 1
+            if(adv_flag.eq.6) beta=0.5      ! hybrid 2
+            if(adv_flag.eq.7) beta=0.75     ! hybrid 3
+        
+!$omp parallel  private(ie,v0,v1,v0v1,flag,ilev,wind_edge,itracer,der0,der1,part1,part2,part3)    
+!$omp do schedule(dynamic,50) 
+            do ie = 1, mesh%ne
+                !v0        = mesh%edt(ie)%v(1)       ! 1st end of edge
+                !v1        = mesh%edt(ie)%v(2)       ! 2nd end of edge
+                v0        = mesh%edt_v(1,ie)       ! 1st end of edge
+                v1        = mesh%edt_v(2,ie)       ! 2nd end of edge
+                v0v1      = mesh%vtx_p(1:3,v1)-mesh%vtx_p(1:3,v0)
+                flag      = sign(one,dot_product(v0v1,real(mesh%edp_nr(1:3,ie),r8)))
+                do ilev   = 1, nlev
+                    wind_edge = flag*scalar_normal_velocity_at_edge_full_level(ilev,ie)
+                    do itracer = 1, ntracer
+                        call calc_der_2nd_at_hx(mesh,scalar_tracer_mxrt_at_pc_full_level(itracer,ilev,mesh%plg_stencil_index_2nd(1:mesh%plg_stencil_number_2nd(v0),v0)),&
+                                                     scalar_tracer_mxrt_at_pc_full_level(itracer,ilev,v0),v0,ie,0,mesh%plg_stencil_number_2nd(v0),der0)
+                        call calc_der_2nd_at_hx(mesh,scalar_tracer_mxrt_at_pc_full_level(itracer,ilev,mesh%plg_stencil_index_2nd(1:mesh%plg_stencil_number_2nd(v1),v1)),&
+                                                     scalar_tracer_mxrt_at_pc_full_level(itracer,ilev,v1),v1,ie,1,mesh%plg_stencil_number_2nd(v1),der1)
+                        part1 = (scalar_tracer_mxrt_at_pc_full_level(itracer,ilev,v0)+&
+                                 scalar_tracer_mxrt_at_pc_full_level(itracer,ilev,v1))*0.5_r4
+                        part2 = -1._r4*((mesh%edt_leng(ie)**2)/12._r4)*(der0+der1)
+                        part3 = (sign(1._r4,wind_edge)*(mesh%edt_leng(ie)**2)*beta/12._r4)*(der1-der0)
+                        scalar_normal_mxrt_at_edge_full_level(itracer,ilev,ie) = (part1+part2+part3)
+                    end do
+                end do
+            end do
+!$omp end do nowait
+!$omp end parallel 
+
+        ! case(8,9,10,11,12)  ! O5/6
+
+        !     if(adv_flag.eq.8)  beta=1        ! 5rd order
+        !     if(adv_flag.eq.9)  beta=0        ! 6th order
+        !     if(adv_flag.eq.10) beta=0.25     ! hybrid
+        !     if(adv_flag.eq.11) beta=0.5      ! hybrid
+        !     if(adv_flag.eq.12) beta=0.75     ! hybrid
+       
+        !     do ie = 1, mesh%ne
+        !           !v0        = mesh%edt(ie)%v(1)       ! 1st end of edge
+        !           !v1        = mesh%edt(ie)%v(2)       ! 2nd end of edge
+        !           v0        = mesh%edt_v(1,ie)       ! 1st end of edge
+        !           v1        = mesh%edt_v(2,ie)       ! 2nd end of edge
+        !           v0v1      = mesh%vtx_p(1:3,v1)-mesh%vtx_p(1:3,v0)
+        !           flag      = sign(one,dot_product(v0v1,real(mesh%edp_nr(1:3,ie),r8)))
+        !           do ilev = 1, nlev
+        !              wind_edge = flag*scalar_normal_velocity_at_edge_full_level(ilev,ie)
+        !              do itracer = 1, ntracer
+        !                 call calc_der_4th_at_hx(mesh,scalar_tracer_mxrt_at_pc_full_level(itracer,ilev,mesh%plg_stencil_index_4th(1:mesh%plg_stencil_number_4th(v0),v0)),&
+        !                                              scalar_tracer_mxrt_at_pc_full_level(itracer,ilev,v0),v0,ie,0,mesh%plg_stencil_number_4th(v0),der0_4th,der0)
+        !                 call calc_der_4th_at_hx(mesh,scalar_tracer_mxrt_at_pc_full_level(itracer,ilev,mesh%plg_stencil_index_4th(1:mesh%plg_stencil_number_4th(v1),v1)),&
+        !                                              scalar_tracer_mxrt_at_pc_full_level(itracer,ilev,v1),v1,ie,1,mesh%plg_stencil_number_4th(v1),der1_4th,der1)
+        !                 call flux_wrf56(wind_edge,scalar_tracer_mxrt_at_pc_full_level(itracer,ilev,v0),&
+        !                                           scalar_tracer_mxrt_at_pc_full_level(itracer,ilev,v1),&
+        !                                           der0,der1,der0_4th,der1_4th,scalar_normal_mxrt_at_edge_full_level(itracer,ilev,ie),&
+        !                                           real(mesh%edt_leng(ie),r8),beta)
+        !              end do
+        !           end do
+        !     end do
 
         case(33)  ! purely upwind O3
 
@@ -189,6 +274,24 @@ contains
             end do
 !$omp end do nowait
 !$omp end parallel 
+
+        case(28)  ! MS13, UQA-1
+            !
+            ! for FFSL flux, first reconstruct tangent wind based on normal velocity,
+            ! then obtain the flux
+            if(.not.allocated(scalar_tangen_velocity_at_edge_full_level)) allocate(scalar_tangen_velocity_at_edge_full_level(nlev,mesh%ne))
+    
+            call reconstruct_tangent_wind(mesh,scalar_normal_velocity_at_edge_full_level,&
+                                               scalar_tangen_velocity_at_edge_full_level,&
+                                               nlev)
+
+            call tracer_transport_ffsl_flux_sm10(mesh,scalar_normal_velocity_at_edge_full_level , &
+                                                      scalar_tangen_velocity_at_edge_full_level , &
+                                                      scalar_tracer_mxrt_at_pc_full_level       , &
+                                                      scalar_normal_mxrt_at_edge_full_level     , &
+                                                      real(dtime,ns), nlev, ntracer)
+
+       if(allocated(scalar_tangen_velocity_at_edge_full_level)) deallocate(scalar_tangen_velocity_at_edge_full_level)
 
         case default
             print*,"TRACER TRANSPORT: you must select an advection scheme/flux divergence operator"
@@ -340,5 +443,31 @@ contains
         der     = 2._r4*f_array
         return
     end subroutine calc_der_2nd_at_hx_r8
+
+   subroutine reconstruct_tangent_wind(mesh, scalar_normal_velocity_at_edge_full_level,&
+                                             scalar_tangen_velocity_at_edge_full_level,&
+                                             nlev)
+! io
+   type(global_domain),   intent(in)    :: mesh
+   real(r4), allocatable, intent(in)    :: scalar_normal_velocity_at_edge_full_level(:,:)
+   real(r4), allocatable, intent(inout) :: scalar_tangen_velocity_at_edge_full_level(:,:)
+   integer(i4),           intent(in)    :: nlev
+! local
+   integer(i4)                          :: ie, ilev
+   real(r4)                             :: length_of_triangle
+   real(r4)                             :: cell_sum(16)
+
+     do ie = 1, mesh%ne  ! for each edge e'
+        length_of_triangle = rearth*mesh%edt_leng(ie)
+        do ilev = 1, nlev
+           cell_sum(1:mesh%edp_nedge(ie)) = mesh%edp_trsk_on_edge(1:mesh%edp_nedge(ie),ie)*&
+                                            mesh%edp_edpl_on_edge(1:mesh%edp_nedge(ie),ie)*&
+                                            scalar_normal_velocity_at_edge_full_level(ilev,mesh%edp_edge_on_edge(1:mesh%edp_nedge(ie),ie))
+           scalar_tangen_velocity_at_edge_full_level(ilev,ie) = sum(cell_sum(1:mesh%edp_nedge(ie)))/length_of_triangle
+        end do
+     end do
+
+   return
+  end subroutine reconstruct_tangent_wind
 
 end module grist_tracer_transport_flux_operators_mixed

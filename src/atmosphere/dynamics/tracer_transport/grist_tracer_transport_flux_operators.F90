@@ -38,7 +38,8 @@
 #ifndef SPCODE
   real(r8), parameter  :: kesi = 1.e-80_r8
 #else
-  real(r8), parameter  :: kesi = 1.e-40_r8
+  !real(r8), parameter  :: kesi = 1.e-40_r8
+  real(r8), parameter  :: kesi = TINY(1._r8)
 #endif
 
   contains

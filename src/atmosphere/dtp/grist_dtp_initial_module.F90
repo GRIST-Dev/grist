@@ -61,6 +61,9 @@
 #endif
   use grist_math_module,           only: lininterp
                                        
+#ifdef DBL_DCMIP_BW_INIT
+  use grist_dtp_initial_module_r8, only: evaluate_dry_mass_height_r8, baroclinic_wave_test_r8 => baroclinic_wave_test
+#endif
   implicit none
 
   private
@@ -159,6 +162,10 @@
    real(r8)                            :: zref(nlevp), dz, gr, zface(nlevp), zfull(nlev)
    type(exchange_field_list_2d),pointer:: field_head_2d
    real(r8)                            :: utmp, vtmp, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7, tmp8, tmp9
+#ifdef TC_RANDOM_WIND
+   real(r8)                            :: pertval_u, pertval_v
+   type(scalar_2d_field)               :: temp_var
+#endif
    real(r8)                            :: ztop, ptop, delp, delhp
    real(r8)                            :: pface(nlev_inidata+1), hpface(nlev_inidata+1)
    real(r8)                            :: pfull(nlev_inidata),   hpfull(nlev_inidata)
@@ -479,12 +486,22 @@
 !
 ! evaluate dry mass and geometric height at each level
 !
+#ifdef DBL_DCMIP_BW_INIT
+      call evaluate_dry_mass_height_r8(mesh, mesh%nv_full, nlev, 'DCMIP2016-BW', &
+                                       dycoreVarSurface%scalar_hpressure_n%f      , &
+                                       dycoreVarCellFace%scalar_hpressure_n%f   , &
+                                       dycoreVarCellFull%scalar_hpressure_n%f   , &
+                                       dycoreVarCellFace%scalar_geopotential_n%f, &
+                                       dycoreVarCellFull%scalar_geopotential_n%f)
+#else
       call evaluate_dry_mass_height(mesh, mesh%nv_full, nlev, 'DCMIP2016-BW', &
                                     dycoreVarSurface%scalar_hpressure_n%f      , &
                                     dycoreVarCellFace%scalar_hpressure_n%f   , &
                                     dycoreVarCellFull%scalar_hpressure_n%f   , &
                                     dycoreVarCellFace%scalar_geopotential_n%f, &
                                     dycoreVarCellFull%scalar_geopotential_n%f)
+
+#endif
 !
 ! final evaluation based on geop full & face
 !
@@ -1059,6 +1076,41 @@
      end do
    end do
    dycoreVarCellFace%scalar_www_n%f  =  0._r8
+
+#ifdef TC_RANDOM_WIND
+
+   call random_seed()
+
+   temp_var = dycoreVarEdgeFull%scalar_normal_velocity_n
+   do ilev = 1, nlev
+!   if(mpi_rank().eq.0)then
+!         call random_number(pertval_u)
+!         pertval_u = 2.*pertval_u - 1.
+!   end if
+!   call mpi_bcast(pertval_u, 1, MPI_REAL8, 0, MPI_COMM_WORLD, ierr)
+   !print*,"pertu=",pertval_u
+   do ie = 1, mesh%ne_full
+         call random_number(pertval_u)
+         pertval_u = 2.*pertval_u - 1.
+         dycoreVarEdgeFull%scalar_normal_velocity_n%f(ilev,ie) = dycoreVarEdgeFull%scalar_normal_velocity_n%f(ilev,ie) + 0.02*pertval_u*&
+         dycoreVarEdgeFull%scalar_normal_velocity_n%f(ilev,ie)
+   end do
+   end do
+   temp_var = dycoreVarEdgeFull%scalar_normal_velocity_n
+   call exchange_data_2d_add(mesh,field_head_2d,temp_var)
+   call exchange_data_2d(mesh%local_block,field_head_2d)
+   do ilev = 1, nlev
+      do ie = 1, mesh%ne_compute
+         if(mesh%edt_v(1,ie).gt.mesh%nv_compute.and.mesh%edt_v(1,ie).le.mesh%nv_halo(1).and.mesh%edt_v(2,ie).le.mesh%nv_compute)then
+            dycoreVarEdgeFull%scalar_normal_velocity_n%f(ilev,ie) = 0.5_r8*(dycoreVarEdgeFull%scalar_normal_velocity_n%f(ilev,ie)+temp_var%f(ilev,ie))
+         end if
+         if(mesh%edt_v(2,ie).gt.mesh%nv_compute.and.mesh%edt_v(2,ie).le.mesh%nv_halo(1).and.mesh%edt_v(1,ie).le.mesh%nv_compute)then
+            dycoreVarEdgeFull%scalar_normal_velocity_n%f(ilev,ie) = 0.5_r8*(dycoreVarEdgeFull%scalar_normal_velocity_n%f(ilev,ie)+temp_var%f(ilev,ie))
+         end if
+      end do
+   end do
+#endif
+
 #ifndef SEQ_GRIST
 ! exchange data
    call exchange_data_2d_add(mesh,field_head_2d,dycoreVarEdgeFull%scalar_normal_velocity_n)

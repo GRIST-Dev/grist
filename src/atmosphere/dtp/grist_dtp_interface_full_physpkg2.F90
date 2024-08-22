@@ -21,8 +21,6 @@
 !
 ! Revision history:
 !            1. AMIPW physics is added as the first meso/cloud-scale package (not just WRF-V2!)
-!            2. It can also run climate integration at coarse res; performance
-!               good but has known issue
 !----------------------------------------------------------------------------
 
  module grist_dtp_interface_full_physpkg2
