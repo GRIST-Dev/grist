@@ -84,10 +84,6 @@ module grist_grid_file_read
     call wrap_read_2d_group(dm%gcomm_read, gridFilePath,grid_file_2d_name,'tri_cc_ltln',dim_two,   option, tri_cc_ltln%f)
     call wrap_read_2d_group(dm%gcomm_read, gridFilePath,grid_file_2d_name,'tri_ed'     ,dim_Dual,  option, tri_ed%f)
     call wrap_read_2d_group(dm%gcomm_read, gridFilePath,grid_file_2d_name,'tri_nb'     ,dim_Dual,  option, tri_nb%f)
-!#ifndef MESHOPT
-!    call wrap_read_2d_group(dm%gcomm_read, gridFilePath,grid_file_2d_name,'tri_nr'     ,dim_Dual,  option, tri_nr%f)
-!    call wrap_read_2d_group(dm%gcomm_read, gridFilePath,grid_file_2d_name,'tri_tg'     ,dim_Dual,  option, tri_tg%f)
-!#endif
     call wrap_read_2d_group(dm%gcomm_read, gridFilePath,grid_file_2d_name,'tri_area'   ,dim_one,   option, tri_area%f)
 #ifdef CUBE
     call wrap_read_2d_group(dm%gcomm_read, gridFilePath,grid_file_2d_name,'tri_nnb'    ,dim_one,   option, tri_nnb%f)
@@ -100,10 +96,6 @@ module grist_grid_file_read
        dm%tri(i)%v(1:nDual)  = tri_v_local%f(i,1:nDual)
        dm%tri(i)%ed(1:nDual) = tri_ed%f(i,1:nDual)
        dm%tri(i)%nb(1:nDual) = tri_nb%f(i,1:nDual)
-!#ifndef MESHOPT
-!       dm%tri(i)%tg(1:nDual) = tri_tg%f(i,1:nDual)
-!       dm%tri(i)%nr(1:nDual) = tri_nr%f(i,1:nDual)
-!#endif
        dm%tri(i)%areag       = tri_area%f(i,1)
        dm%tri(i)%nnb         = 3      ! default for Voronoi-Delaunay grid 
 #ifdef CUBE
@@ -177,12 +169,6 @@ module grist_grid_file_read
     call wrap_read_2d_group(dm%gcomm_read, gridFilePath,grid_file_2d_name,'vtx_ed'      ,mesh_maxvnb, option, vtx_ed_local%f)
     call wrap_read_2d_group(dm%gcomm_read, gridFilePath,grid_file_2d_name,'vtx_tr'      ,mesh_maxvnb, option, vtx_tr_local%f)
 
-    !call wrap_read_2d_group(dm%gcomm_read, gridFilePath,grid_file_2d_name,'plg_bc_p'    ,dim_three,   option, plg_bc_p%f)
-    !call wrap_read_2d_group(dm%gcomm_read, gridFilePath,grid_file_2d_name,'plg_bc_ltln' ,dim_two,     option, plg_bc_ltln%f)
-!#ifndef MESHOPT
-!    call wrap_read_2d_group(dm%gcomm_read, gridFilePath,grid_file_2d_name,'plg_nr'      ,mesh_maxvnb, option, plg_nr%f)
-!    call wrap_read_2d_group(dm%gcomm_read, gridFilePath,grid_file_2d_name,'plg_tg'      ,mesh_maxvnb, option, plg_tg%f)
-!#endif
     call wrap_read_2d_group(dm%gcomm_read, gridFilePath,grid_file_2d_name,'plg_area'    ,dim_one,     option, plg_area%f)
 
     do i = 1, size(dm%v_index)
@@ -199,16 +185,6 @@ module grist_grid_file_read
         dm%vtx(i)%ed(:)      = vtx_ed_local%f(i,  1:dm%vtx(i)%nnb)
         dm%vtx(i)%tr(:)      = vtx_tr_local%f(i,  1:dm%vtx(i)%nnb)
                                
-        !dm%plg(i)%b%p(1:3)   = plg_bc_p%f(i,1:3)
-        !dm%plg(i)%b%lat      = plg_bc_ltln%f(i,1)
-        !dm%plg(i)%b%lon      = plg_bc_ltln%f(i,2)
-
-!#ifndef MESHOPT
-!        allocate(dm%plg(i)%tg(1:dm%vtx(i)%nnb))
-!        allocate(dm%plg(i)%nr(1:dm%vtx(i)%nnb))
-!        dm%plg(i)%tg(:)     = plg_tg%f(i    ,1:dm%vtx(i)%nnb)
-!        dm%plg(i)%nr(:)     = plg_nr%f(i    ,1:dm%vtx(i)%nnb)
-!#endif
         dm%plg(i)%areag     = plg_area%f(i,1)
    enddo
    call destruct_grid_file_vars_v
@@ -415,13 +391,6 @@ module grist_grid_file_read
          call wrap_read_2d(MPI_COMM_SELF, gridFilePath, grid_file_2d_name,'edt_v', mesh_ne, dim_two, mesh%edt_v)
        end if
        call wrap_bcast_2d(comm, 0, mesh_ne, dim_two, mesh%edt_v)
-
-       !!!!! to be deleted
-       !if(mpi_rank()==0)then
-       !  call wrap_read_2d(MPI_COMM_SELF, gridFilePath,grid_file_2d_name,'edt_v',mesh_ne,dim_two,edt_v)
-       !end if
-       !call wrap_bcast_2d(comm, 0, mesh_ne,dim_two,edt_v )
-       !!!!! to be deleted
 
        ! nv
        allocate(vtx_ltln_nnb_l%f(mesh_nv,3))
