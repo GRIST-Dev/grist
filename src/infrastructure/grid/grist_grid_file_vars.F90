@@ -343,6 +343,7 @@
      vtx_nb_local%pos    = 0
      vtx_ed_local%pos    = 0
      vtx_tr_local%pos    = 0
+
      plg_area%pos        = 0
 
      return
